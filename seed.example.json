@@ -1,0 +1,65 @@
+{
+  "$comment": "Copy this file to seed.json and fill in YOUR data. This bootstraps the knowledge base so the AI has context about you from day one. Run: npm run db:seed",
+
+  "people": [
+    {
+      "name": "Jane Smith",
+      "relationship": "manager",
+      "organization": "Acme Corp",
+      "role": "Engineering Director",
+      "contextNotes": "Weekly 1:1 on Tuesdays. Prefers async updates via Slack.",
+      "relatedProjects": ["Project Alpha"]
+    },
+    {
+      "name": "Alex Chen",
+      "relationship": "teammate",
+      "organization": "Acme Corp",
+      "role": "Senior Engineer",
+      "contextNotes": "Collaborating on the API migration. Timezone: PST.",
+      "relatedProjects": ["Project Alpha", "API Migration"]
+    }
+  ],
+
+  "knowledge": [
+    {
+      "category": "identity",
+      "key": "role",
+      "value": "Senior Software Engineer at Acme Corp, Platform team"
+    },
+    {
+      "category": "identity",
+      "key": "focus-areas",
+      "value": "API gateway, distributed systems, LLM integration"
+    },
+    {
+      "category": "preference",
+      "key": "deep-work-time",
+      "value": "Mornings before 11am — protect this window for complex tasks"
+    },
+    {
+      "category": "preference",
+      "key": "communication-style",
+      "value": "Prefers concise, direct feedback. Async over meetings when possible."
+    },
+    {
+      "category": "priority",
+      "key": "current-top-goal",
+      "value": "Ship API gateway v2 by end of Q1"
+    },
+    {
+      "category": "schedule",
+      "key": "recurring-meetings",
+      "value": "Monday standup 9am, Tuesday 1:1 with Jane, Thursday team retro"
+    },
+    {
+      "category": "workflow",
+      "key": "task-sizing",
+      "value": "Break anything over 2 hours into subtasks. Prefer 30-60 min action items."
+    },
+    {
+      "category": "pattern",
+      "key": "energy-curve",
+      "value": "High energy mornings, low energy after lunch, second wind around 3pm"
+    }
+  ]
+}

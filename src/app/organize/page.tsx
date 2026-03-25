@@ -1,0 +1,533 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { FolderKanban, AlertTriangle, Archive, Plus, MessageSquare, Loader2, Check, X, ChevronDown, ArrowRight } from 'lucide-react';
+import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { cn } from '@/lib/utils';
+
+interface Project {
+  id: string;
+  name: string;
+  category: string | null;
+  goal: string | null;
+  status: string | null;
+  openActionCount: number | null;
+  lastActivityAt: string | null;
+  notes: string | null;
+}
+
+interface AuditRecommendation {
+  type: string;
+  projectNames: string[];
+  observation: string;
+  reasoning: string;
+  options: { label: string; action: string; details: string }[];
+  question?: string;
+}
+
+interface FilingSuggestion {
+  taskId: string;
+  taskTitle: string;
+  issues: string[];
+  suggestedProject: string | null;
+  suggestedLabels: string[];
+  suggestedPriority: number | null;
+  confidence: number;
+  reasoning: string;
+}
+
+export default function OrganizePage() {
+  const [tab, setTab] = useState<'projects' | 'filing'>('projects');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [auditing, setAuditing] = useState(false);
+  const [audit, setAudit] = useState<{ recommendations: AuditRecommendation[]; overallHealth: string } | null>(null);
+  const [chatMessage, setChatMessage] = useState('');
+  const [chatResponse, setChatResponse] = useState('');
+  const [chatting, setChatting] = useState(false);
+
+  // Filing state
+  const [filingLoading, setFilingLoading] = useState(false);
+  const [filingSuggestions, setFilingSuggestions] = useState<FilingSuggestion[]>([]);
+  const [filingLoaded, setFilingLoaded] = useState(false);
+  const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set());
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [overrides, setOverrides] = useState<Record<string, { projectId?: string }>>({});
+  const [expandedFiling, setExpandedFiling] = useState<string | null>(null);
+  const [acceptingAll, setAcceptingAll] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/todoist?action=projects');
+        if (res.ok) setProjects(await res.json());
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const runAudit = async () => {
+    setAuditing(true);
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'project-audit' }),
+      });
+      if (res.ok) setAudit(await res.json());
+    } finally {
+      setAuditing(false);
+    }
+  };
+
+  const sendChat = async () => {
+    if (!chatMessage.trim()) return;
+    setChatting(true);
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'organize-chat', message: chatMessage }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setChatResponse(data.response);
+      }
+    } finally {
+      setChatting(false);
+      setChatMessage('');
+    }
+  };
+
+  const loadFilingSuggestions = async () => {
+    setFilingLoading(true);
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'filing-suggestions' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setFilingSuggestions(data.suggestions || []);
+      }
+    } finally {
+      setFilingLoading(false);
+      setFilingLoaded(true);
+    }
+  };
+
+  const acceptSuggestion = async (s: FilingSuggestion) => {
+    const projectId = overrides[s.taskId]?.projectId
+      ?? projects.find(p => p.name === s.suggestedProject)?.id
+      ?? null;
+
+    const updateData: Record<string, any> = {};
+    if (projectId) updateData.projectId = projectId;
+    if (s.suggestedLabels?.length) updateData.labels = JSON.stringify(s.suggestedLabels);
+    if (s.suggestedPriority != null) updateData.priority = s.suggestedPriority;
+
+    if (Object.keys(updateData).length > 0) {
+      await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update-task', taskId: s.taskId, data: updateData }),
+      });
+    }
+    setAcceptedIds(prev => new Set(prev).add(s.taskId));
+  };
+
+  const acceptAllSuggestions = async () => {
+    setAcceptingAll(true);
+    const pending = filingSuggestions.filter(s => !acceptedIds.has(s.taskId) && !dismissedIds.has(s.taskId));
+    for (const s of pending) {
+      await acceptSuggestion(s);
+    }
+    setAcceptingAll(false);
+  };
+
+  const dismissSuggestion = (taskId: string) => {
+    setDismissedIds(prev => new Set(prev).add(taskId));
+  };
+
+  // Auto-load filing when switching to that tab
+  useEffect(() => {
+    if (tab === 'filing' && !filingLoaded && !filingLoading) {
+      loadFilingSuggestions();
+    }
+  }, [tab, filingLoaded, filingLoading]);
+
+  const getHealthColor = (project: Project) => {
+    if (!project.lastActivityAt) return 'text-red-400';
+    const days = Math.floor((Date.now() - new Date(project.lastActivityAt).getTime()) / 86400000);
+    if (days <= 7) return 'text-green-400';
+    if (days <= 14) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  const getHealthDot = (project: Project) => {
+    const color = getHealthColor(project);
+    return <span className={cn('inline-block h-2 w-2 rounded-full', color.replace('text-', 'bg-'))} />;
+  };
+
+  const active = projects.filter(p => p.status === 'active');
+  const paused = projects.filter(p => p.status === 'paused');
+  const archived = projects.filter(p => p.status === 'archived');
+
+  return (
+    <div>
+      <PageHeader title="Organize" description="Manage project health and task organization" />
+
+      {/* Tabs */}
+      <div className="mb-6 flex gap-1 rounded-lg bg-secondary p-1">
+        <button
+          onClick={() => setTab('projects')}
+          className={cn(
+            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            tab === 'projects' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Projects
+        </button>
+        <button
+          onClick={() => setTab('filing')}
+          className={cn(
+            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            tab === 'filing' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Filing
+        </button>
+      </div>
+
+      {tab === 'projects' ? (
+        <div className="space-y-6">
+          {/* Project Health */}
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center gap-4 text-xs font-medium text-muted-foreground">
+              <span>Active ({active.length})</span>
+              <span>Paused ({paused.length})</span>
+              <span>Archived ({archived.length})</span>
+            </div>
+
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <div key={i} className="h-10 animate-pulse rounded bg-secondary" />)}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {active.map(p => (
+                  <div key={p.id} className="task-card flex items-center gap-3 rounded-lg px-3 py-2.5">
+                    {getHealthDot(p)}
+                    <span className="flex-1 text-sm font-medium">{p.name}</span>
+                    {p.category && (
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {p.category}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {p.openActionCount || 0} tasks
+                    </span>
+                    {p.lastActivityAt && (
+                      <span className="text-xs text-muted-foreground">
+                        {Math.floor((Date.now() - new Date(p.lastActivityAt).getTime()) / 86400000)}d ago
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Audit Section */}
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">LLM Project Audit</h3>
+              <button
+                onClick={runAudit}
+                disabled={auditing}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/30 disabled:opacity-50"
+              >
+                {auditing ? <Loader2 className="h-3 w-3 animate-spin" /> : <AlertTriangle className="h-3 w-3" />}
+                {auditing ? 'Auditing...' : 'Run Full Audit'}
+              </button>
+            </div>
+
+            {audit && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">{audit.overallHealth}</p>
+                {audit.recommendations.map((rec, i) => (
+                  <div key={i} className="rounded-lg border border-border p-3">
+                    <p className="mb-1 text-sm">{rec.observation}</p>
+                    <p className="mb-2 text-xs text-muted-foreground">{rec.reasoning}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {rec.options.map((opt, j) => (
+                        <button
+                          key={j}
+                          className="rounded bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Chat */}
+            <div className="mt-4 border-t border-border pt-3">
+              <div className="flex gap-2">
+                <input
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+                  placeholder="Ask about a project..."
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                />
+                <button
+                  onClick={sendChat}
+                  disabled={chatting || !chatMessage.trim()}
+                  className="rounded-lg bg-primary/20 px-3 py-2 text-sm text-primary hover:bg-primary/30 disabled:opacity-50"
+                >
+                  {chatting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                </button>
+              </div>
+              {chatResponse && (
+                <div className="mt-3 rounded-lg bg-secondary/50 p-3 text-sm text-muted-foreground">
+                  {chatResponse}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Filing Queue Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Needs Filing</h3>
+              <p className="text-xs text-muted-foreground">
+                Tasks missing a project, labels, or with organization issues
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={loadFilingSuggestions}
+                disabled={filingLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+              >
+                {filingLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderKanban className="h-3 w-3" />}
+                {filingLoading ? 'Scanning...' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {filingLoading && !filingLoaded && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Loader2 className="mb-3 h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Analyzing tasks for filing issues...</p>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {filingLoaded && filingSuggestions.length === 0 && (
+            <EmptyState
+              icon={Check}
+              title="All tasks filed"
+              description="Every task has a home. Nice work!"
+            />
+          )}
+
+          {/* Suggestions List */}
+          {filingLoaded && filingSuggestions.length > 0 && (
+            <>
+              {/* Batch Actions */}
+              {filingSuggestions.some(s => !acceptedIds.has(s.taskId) && !dismissedIds.has(s.taskId)) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                  <span className="text-sm text-muted-foreground">
+                    {filingSuggestions.filter(s => !acceptedIds.has(s.taskId) && !dismissedIds.has(s.taskId)).length} suggestions remaining
+                  </span>
+                  <button
+                    onClick={acceptAllSuggestions}
+                    disabled={acceptingAll}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {acceptingAll ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                    {acceptingAll ? 'Accepting...' : 'Accept All Suggestions'}
+                  </button>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {filingSuggestions.map(s => {
+                  const isAccepted = acceptedIds.has(s.taskId);
+                  const isDismissed = dismissedIds.has(s.taskId);
+                  if (isDismissed) return null;
+
+                  return (
+                    <div
+                      key={s.taskId}
+                      className={cn(
+                        'rounded-xl border bg-card transition-all',
+                        isAccepted ? 'border-green-500/30 opacity-60' : 'border-border',
+                      )}
+                    >
+                      <div className="flex items-start gap-3 p-4">
+                        {/* Status indicator */}
+                        <div className="mt-1">
+                          {isAccepted ? (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500/20">
+                              <Check className="h-3 w-3 text-green-400" />
+                            </div>
+                          ) : (
+                            <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="mb-1 text-sm font-medium">
+                            {isAccepted && <span className="mr-1 text-green-400">✓</span>}
+                            {s.taskTitle}
+                          </div>
+
+                          {/* Issue badges */}
+                          <div className="mb-2 flex flex-wrap gap-1">
+                            {s.issues.map(issue => (
+                              <span
+                                key={issue}
+                                className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
+                              >
+                                {issue.replace(/_/g, ' ')}
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* Suggested changes */}
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            {s.suggestedProject && (
+                              <div className="flex items-center gap-2">
+                                <span>Suggested:</span>
+                                {overrides[s.taskId]?.projectId ? (
+                                  <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+                                    📁 {projects.find(p => p.id === overrides[s.taskId]?.projectId)?.name || 'Unknown'}
+                                  </span>
+                                ) : (
+                                  <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">
+                                    📁 {s.suggestedProject}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {s.suggestedLabels?.length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <span>Labels:</span>
+                                {s.suggestedLabels.map(l => (
+                                  <span key={l} className="rounded bg-secondary px-1.5 py-0.5 font-medium">@{l}</span>
+                                ))}
+                              </div>
+                            )}
+                            {s.suggestedPriority != null && (
+                              <div>Priority: P{s.suggestedPriority}</div>
+                            )}
+                          </div>
+
+                          {/* Reasoning (expandable) */}
+                          {expandedFiling === s.taskId && (
+                            <div className="mt-2 rounded-lg bg-secondary/50 px-3 py-2 text-xs text-muted-foreground">
+                              {s.reasoning}
+                            </div>
+                          )}
+
+                          {/* Confidence */}
+                          <div className="mt-1 flex items-center gap-2">
+                            <div className="h-1 w-16 overflow-hidden rounded-full bg-secondary">
+                              <div
+                                className={cn(
+                                  'h-full rounded-full',
+                                  s.confidence >= 0.8 ? 'bg-green-400' : s.confidence >= 0.6 ? 'bg-amber-400' : 'bg-red-400',
+                                )}
+                                style={{ width: `${s.confidence * 100}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">{Math.round(s.confidence * 100)}%</span>
+                            <button
+                              onClick={() => setExpandedFiling(expandedFiling === s.taskId ? null : s.taskId)}
+                              className="text-[10px] text-muted-foreground hover:text-foreground"
+                            >
+                              {expandedFiling === s.taskId ? 'hide reasoning' : 'why?'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        {!isAccepted && (
+                          <div className="flex shrink-0 flex-col gap-1.5">
+                            <button
+                              onClick={() => acceptSuggestion(s)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
+                            >
+                              <Check className="h-3 w-3" /> Accept
+                            </button>
+                            <button
+                              onClick={() => setExpandedFiling(expandedFiling === s.taskId ? null : s.taskId)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                            >
+                              <ChevronDown className={cn('h-3 w-3 transition-transform', expandedFiling === s.taskId && 'rotate-180')} /> Change
+                            </button>
+                            <button
+                              onClick={() => dismissSuggestion(s.taskId)}
+                              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground"
+                            >
+                              <X className="h-3 w-3" /> Skip
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Override project picker */}
+                      {expandedFiling === s.taskId && !isAccepted && (
+                        <div className="border-t border-border px-4 py-3">
+                          <div className="text-xs font-medium text-muted-foreground mb-2">Choose a different project:</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {active.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => setOverrides(prev => ({ ...prev, [s.taskId]: { projectId: p.id } }))}
+                                className={cn(
+                                  'rounded-lg px-2.5 py-1 text-xs font-medium transition-colors',
+                                  overrides[s.taskId]?.projectId === p.id
+                                    ? 'bg-primary/20 text-primary'
+                                    : 'bg-secondary text-muted-foreground hover:bg-accent',
+                                )}
+                              >
+                                {p.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Summary of accepted */}
+              {acceptedIds.size > 0 && (
+                <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3">
+                  <span className="text-xs font-medium text-green-400">
+                    ✓ {acceptedIds.size} suggestion{acceptedIds.size !== 1 ? 's' : ''} applied
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
