@@ -12,7 +12,7 @@ interface ExtractedVoiceTask {
 
 export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
   // Convert buffer to File object for OpenAI API
-  const file = new File([audioBuffer], 'recording.webm', { type: mimeType });
+  const file = new File([new Uint8Array(audioBuffer)], 'recording.webm', { type: mimeType });
 
   const transcription = await openai.audio.transcriptions.create({
     model: 'whisper-1',

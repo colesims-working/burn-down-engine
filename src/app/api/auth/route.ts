@@ -11,8 +11,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  // Login
-  const hash = process.env.APP_PASSWORD_HASH;
+  // Login — unescape legacy \$ from old setup script
+  const hash = process.env.APP_PASSWORD_HASH?.replace(/\\\$/g, '$');
   if (!hash) {
     return NextResponse.json(
       { error: 'Server not configured. Set APP_PASSWORD_HASH env var.' },

@@ -6,6 +6,7 @@ import { buildContext } from '@/lib/llm/context';
 import { DAILY_OBSERVATIONS_PROMPT, WEEKLY_REVIEW_PROMPT } from '@/lib/llm/prompts/engage';
 import { processInlineKnowledge } from '@/lib/llm/extraction';
 import { bumpTask, blockTask } from '@/lib/priority/engine';
+import { killTaskInTodoist } from '@/lib/todoist/sync';
 import { format, startOfWeek, subDays } from 'date-fns';
 import { eq, and, gte, lte, ne } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
@@ -114,8 +115,12 @@ export async function saveDailyReview(data: {
     await blockTask(taskId, blocker || 'blocked during daily review');
   }
 
-  // Kill tasks: mark as killed + log to history
+  // Kill tasks: mark as killed + delete from Todoist
   for (const taskId of data.killedTaskIds) {
+    const task = await db.query.tasks.findFirst({
+      where: eq(schema.tasks.id, taskId),
+    });
+
     await db.update(schema.tasks)
       .set({ status: 'killed', updatedAt: new Date().toISOString() })
       .where(eq(schema.tasks.id, taskId));
@@ -125,6 +130,14 @@ export async function saveDailyReview(data: {
       action: 'killed',
       details: JSON.stringify({ killedAt: new Date().toISOString(), source: 'daily_review' }),
     });
+
+    if (task) {
+      try {
+        await killTaskInTodoist(task);
+      } catch (e) {
+        console.error('Failed to delete killed task in Todoist:', e);
+      }
+    }
   }
 
   // ── Persist the review record ─────────────────────────────

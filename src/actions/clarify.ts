@@ -6,7 +6,7 @@ import { buildContext } from '@/lib/llm/context';
 import { CLARIFY_SYSTEM_PROMPT } from '@/lib/llm/prompts/clarify';
 import { extractAndStoreKnowledge, processInlineKnowledge } from '@/lib/llm/extraction';
 import { embedTask } from '@/lib/embeddings/generate';
-import { pushTaskToTodoist } from '@/lib/todoist/sync';
+import { pushTaskToTodoist, pushSubtasksToTodoist } from '@/lib/todoist/sync';
 import { eq, and } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
@@ -64,8 +64,14 @@ export async function applyClarification(
   taskId: string,
   clarification: ClarifyResult
 ): Promise<schema.Task> {
-  // Find or create project
+  const task = await db.query.tasks.findFirst({
+    where: eq(schema.tasks.id, taskId),
+  });
+  if (!task) throw new Error('Task not found');
+
+  // ── Step 1: Resolve or create project ──────────────────────
   let projectId: string | null = null;
+  let todoistProjectId: string | undefined;
   if (clarification.projectName) {
     const existingProject = await db.query.projects.findFirst({
       where: eq(schema.projects.name, clarification.projectName),
@@ -73,7 +79,9 @@ export async function applyClarification(
 
     if (existingProject) {
       projectId = existingProject.id;
+      todoistProjectId = existingProject.todoistId || undefined;
     } else if (clarification.newProject) {
+      // Create locally first (we'll get the todoistId in pushTaskToTodoist)
       const created = await db.insert(schema.projects)
         .values({
           name: clarification.projectName,
@@ -84,8 +92,9 @@ export async function applyClarification(
     }
   }
 
-  // Update the task
-  const updated = await db.update(schema.tasks)
+  // ── Step 2: Store LLM enrichment on task (metadata we own) ─
+  // Keep status as 'inbox' — only promote after Todoist confirms
+  await db.update(schema.tasks)
     .set({
       title: clarification.title,
       nextAction: clarification.nextAction,
@@ -97,35 +106,72 @@ export async function applyClarification(
       contextNotes: clarification.contextNotes,
       relatedPeople: JSON.stringify(clarification.relatedPeople),
       relatedLinks: JSON.stringify(clarification.relatedLinks),
-      status: 'clarified',
       clarifyConfidence: clarification.confidence,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(schema.tasks.id, taskId));
+
+  // Re-fetch with enrichment applied (still status='inbox')
+  const enrichedTask = (await db.query.tasks.findFirst({
+    where: eq(schema.tasks.id, taskId),
+  }))!;
+
+  // ── Step 3: Push to Todoist (source of truth) ──────────────
+  const pushed = await pushTaskToTodoist(enrichedTask);
+
+  if (!pushed) {
+    // Todoist push failed — task stays inbox, user can retry
+    return enrichedTask;
+  }
+
+  // ── Step 4: Todoist confirmed — now promote locally ────────
+  const updated = await db.update(schema.tasks)
+    .set({
+      status: 'clarified',
       updatedAt: new Date().toISOString(),
     })
     .where(eq(schema.tasks.id, taskId))
     .returning();
 
-  const task = updated[0];
+  const finalTask = updated[0];
 
-  // Create subtasks if decomposed
+  // ── Step 5: Create subtasks in DB and push to Todoist ──────
   if (clarification.decompositionNeeded && clarification.subtasks.length > 0) {
-    for (const sub of clarification.subtasks) {
-      await db.insert(schema.tasks).values({
+    const validSubtasks = clarification.subtasks.filter(sub => sub.title?.trim());
+    const createdSubtasks: schema.Task[] = [];
+
+    for (const sub of validSubtasks) {
+      const created = await db.insert(schema.tasks).values({
         originalText: sub.title,
         title: sub.title,
-        nextAction: sub.nextAction,
+        nextAction: sub.nextAction || null,
         projectId,
         priority: clarification.priority,
         parentTaskId: taskId,
         isDecomposed: true,
         status: 'clarified',
-      });
+      }).returning();
+      createdSubtasks.push(created[0]);
     }
+
+    if (task.todoistId && createdSubtasks.length > 0) {
+      // Look up the todoist project ID for subtask creation
+      let subProjectId: string | undefined = todoistProjectId;
+      if (!subProjectId && projectId) {
+        const proj = await db.query.projects.findFirst({
+          where: eq(schema.projects.id, projectId),
+        });
+        subProjectId = proj?.todoistId || undefined;
+      }
+      await pushSubtasksToTodoist(task.todoistId, createdSubtasks, subProjectId);
+    }
+
     await db.update(schema.tasks)
       .set({ isDecomposed: true })
       .where(eq(schema.tasks.id, taskId));
   }
 
-  // Log to history
+  // ── Step 6: Log history and generate embedding ─────────────
   await db.insert(schema.taskHistory).values({
     taskId,
     action: 'clarified',
@@ -137,14 +183,11 @@ export async function applyClarification(
   });
 
   // Generate embedding (best-effort, non-blocking)
-  void embedTask(task).catch(() => {});
-
-  // Push to Todoist (best-effort, non-blocking)
-  void pushTaskToTodoist(task).catch(() => {});
+  void embedTask(finalTask).catch(() => {});
 
   revalidatePath('/clarify');
   revalidatePath('/engage');
-  return task;
+  return finalTask;
 }
 
 export async function getTasksForClarify() {

@@ -1,4 +1,10 @@
-const TODOIST_API_BASE = 'https://api.todoist.com/rest/v2';
+const TODOIST_API_BASE = 'https://api.todoist.com/api/v1';
+
+// v1 paginated response wrapper
+interface PaginatedResponse<T> {
+  results: T[];
+  next_cursor: string | null;
+}
 
 interface TodoistTask {
   id: string;
@@ -7,18 +13,17 @@ interface TodoistTask {
   project_id: string;
   section_id: string | null;
   parent_id: string | null;
-  order: number;
+  child_order: number;
   priority: number; // 1=none, 2=low, 3=med, 4=high
   due: {
     date: string;
     string: string;
-    recurring: boolean;
+    is_recurring: boolean;
     datetime?: string;
   } | null;
   labels: string[];
-  is_completed: boolean;
-  created_at: string;
-  url: string;
+  checked: boolean;
+  added_at: string;
 }
 
 interface TodoistProject {
@@ -26,11 +31,10 @@ interface TodoistProject {
   name: string;
   color: string;
   parent_id: string | null;
-  order: number;
+  child_order: number;
   is_favorite: boolean;
-  is_inbox_project: boolean;
+  inbox_project?: boolean;
   view_style: string;
-  url: string;
 }
 
 interface TodoistLabel {
@@ -79,6 +83,22 @@ class TodoistClient {
     return response.json();
   }
 
+  /** Collect all pages from a v1 paginated endpoint into a flat array. */
+  private async fetchAllPages<T>(endpoint: string): Promise<T[]> {
+    const results: T[] = [];
+    let url = endpoint;
+    const sep = endpoint.includes('?') ? '&' : '?';
+
+    while (url) {
+      const page = await this.request<PaginatedResponse<T>>(url);
+      results.push(...page.results);
+      if (!page.next_cursor) break;
+      url = `${endpoint}${sep}cursor=${encodeURIComponent(page.next_cursor)}`;
+    }
+
+    return results;
+  }
+
   // ─── Tasks ──────────────────────────────────────────────────
 
   async getTasks(params?: {
@@ -86,13 +106,20 @@ class TodoistClient {
     filter?: string;
     label?: string;
   }): Promise<TodoistTask[]> {
+    // v1 moved filter queries to a separate endpoint
+    if (params?.filter) {
+      return this.fetchAllPages<TodoistTask>(
+        `/tasks/filter?query=${encodeURIComponent(params.filter)}`
+      );
+    }
+
     const searchParams = new URLSearchParams();
     if (params?.project_id) searchParams.set('project_id', params.project_id);
-    if (params?.filter) searchParams.set('filter', params.filter);
     if (params?.label) searchParams.set('label', params.label);
+    searchParams.set('limit', '200');
 
     const query = searchParams.toString();
-    return this.request<TodoistTask[]>(`/tasks${query ? `?${query}` : ''}`);
+    return this.fetchAllPages<TodoistTask>(`/tasks?${query}`);
   }
 
   async getTask(id: string): Promise<TodoistTask> {
@@ -118,7 +145,6 @@ class TodoistClient {
   async updateTask(id: string, data: {
     content?: string;
     description?: string;
-    project_id?: string;
     priority?: number;
     due_date?: string;
     due_string?: string;
@@ -127,6 +153,17 @@ class TodoistClient {
     return this.request<TodoistTask>(`/tasks/${id}`, {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  }
+
+  async moveTask(id: string, target: {
+    project_id?: string;
+    section_id?: string;
+    parent_id?: string;
+  }): Promise<TodoistTask> {
+    return this.request<TodoistTask>(`/tasks/${id}/move`, {
+      method: 'POST',
+      body: JSON.stringify(target),
     });
   }
 
@@ -141,7 +178,7 @@ class TodoistClient {
   // ─── Projects ───────────────────────────────────────────────
 
   async getProjects(): Promise<TodoistProject[]> {
-    return this.request<TodoistProject[]>('/projects');
+    return this.fetchAllPages<TodoistProject>('/projects?limit=200');
   }
 
   async getProject(id: string): Promise<TodoistProject> {
@@ -178,7 +215,7 @@ class TodoistClient {
   // ─── Labels ─────────────────────────────────────────────────
 
   async getLabels(): Promise<TodoistLabel[]> {
-    return this.request<TodoistLabel[]>('/labels');
+    return this.fetchAllPages<TodoistLabel>('/labels?limit=200');
   }
 
   async createLabel(data: { name: string; color?: string }): Promise<TodoistLabel> {
@@ -191,7 +228,7 @@ class TodoistClient {
   // ─── Comments ───────────────────────────────────────────────
 
   async getComments(taskId: string): Promise<TodoistComment[]> {
-    return this.request<TodoistComment[]>(`/comments?task_id=${taskId}`);
+    return this.fetchAllPages<TodoistComment>(`/comments?task_id=${taskId}`);
   }
 
   async addComment(data: {
@@ -208,7 +245,7 @@ class TodoistClient {
 
   async getInboxProject(): Promise<TodoistProject> {
     const projects = await this.getProjects();
-    const inbox = projects.find(p => p.is_inbox_project);
+    const inbox = projects.find(p => p.inbox_project);
     if (!inbox) throw new Error('Inbox project not found');
     return inbox;
   }
@@ -220,6 +257,11 @@ class TodoistClient {
 
   async getTodayTasks(): Promise<TodoistTask[]> {
     return this.getTasks({ filter: 'today | overdue' });
+  }
+
+  async findProjectByName(name: string): Promise<TodoistProject | null> {
+    const projects = await this.getProjects();
+    return projects.find(p => p.name.toLowerCase() === name.toLowerCase()) || null;
   }
 }
 

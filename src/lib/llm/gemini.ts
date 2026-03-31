@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, GenerateContentStreamResult } from '@google/generative-ai';
 import { trackLLMInteraction } from './tracking';
 import { LLMOperation } from './router';
+import { getAppSettings } from '@/lib/db/settings';
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -9,8 +10,9 @@ export async function geminiGenerate(opts: {
   prompt: string;
   json?: boolean;
   operation?: LLMOperation;
+  model?: string;
 }): Promise<string> {
-  const modelName = 'gemini-2.5-flash-preview-05-20';
+  const modelName = opts.model || (await getAppSettings()).primaryModel!;
   const startTime = Date.now();
   const model = genai.getGenerativeModel({
     model: modelName,
@@ -46,9 +48,11 @@ export async function geminiGenerate(opts: {
 export async function geminiStream(opts: {
   system: string;
   prompt: string;
+  model?: string;
 }): Promise<GenerateContentStreamResult> {
+  const modelName = opts.model || (await getAppSettings()).primaryModel!;
   const model = genai.getGenerativeModel({
-    model: 'gemini-2.5-flash-preview-05-20',
+    model: modelName,
     systemInstruction: opts.system,
   });
 
@@ -56,7 +60,7 @@ export async function geminiStream(opts: {
 }
 
 export async function geminiEmbed(text: string): Promise<Float32Array> {
-  const model = genai.getGenerativeModel({ model: 'text-embedding-004' });
+  const model = genai.getGenerativeModel({ model: 'gemini-embedding-001' });
   const result = await model.embedContent(text);
   return new Float32Array(result.embedding.values);
 }
@@ -65,6 +69,7 @@ export async function geminiGenerateJSON<T>(opts: {
   system: string;
   prompt: string;
   operation?: LLMOperation;
+  model?: string;
 }): Promise<T> {
   const raw = await geminiGenerate({ ...opts, json: true });
   return JSON.parse(raw) as T;

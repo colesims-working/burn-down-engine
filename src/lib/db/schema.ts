@@ -158,7 +158,7 @@ export const taskHistory = sqliteTable('task_history', {
   taskId: text('task_id').notNull().references(() => tasks.id),
   action: text('action', {
     enum: ['created', 'clarified', 'organized', 'prioritized', 'bumped', 'blocked',
-      'unblocked', 'completed', 'killed', 'decomposed', 'fire_promoted', 'deferred', 'reranked'],
+      'unblocked', 'completed', 'killed', 'decomposed', 'fire_promoted', 'deferred', 'reranked', 'waiting'],
   }).notNull(),
   details: text('details'),
   timestamp: text('timestamp').default(sql`(datetime('now'))`),
@@ -244,6 +244,22 @@ export const syncState = sqliteTable('sync_state', {
 });
 
 // ============================================================
+// APP SETTINGS
+// ============================================================
+
+export const appSettings = sqliteTable('app_settings', {
+  id: text('id').primaryKey().default('singleton'),
+  primaryModel: text('primary_model').default('gemini-3.1-flash-lite-preview'),
+  heavyModel: text('heavy_model').default('claude-opus-4-20250514'),
+  // JSON map: { [LLMOperation]: { provider: 'gemini'|'anthropic'|'openai', model: string } }
+  modelConfig: text('model_config'),
+  // JSON array of "provider:modelId" strings that the admin has disabled
+  disabledModels: text('disabled_models'),
+  autoApproveThreshold: real('auto_approve_threshold').default(0.8),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+});
+
+// ============================================================
 // TYPE EXPORTS
 // ============================================================
 
@@ -255,3 +271,4 @@ export type Person = typeof people.$inferSelect;
 export type KnowledgeEntry = typeof knowledgeEntries.$inferSelect;
 export type TaskHistoryEntry = typeof taskHistory.$inferSelect;
 export type DailyReview = typeof dailyReviews.$inferSelect;
+export type AppSettings = typeof appSettings.$inferSelect;

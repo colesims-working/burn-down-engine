@@ -20,8 +20,10 @@ export function mapToTodoistPriority(ourPriority: number): number {
 
 export async function syncInbox(): Promise<schema.Task[]> {
   const todoistTasks = await todoist.getInboxTasks();
+  const todoistInboxIds = new Set(todoistTasks.map(tt => tt.id));
   const synced: schema.Task[] = [];
 
+  // Upsert tasks currently in Todoist inbox
   for (const tt of todoistTasks) {
     const existing = await db.query.tasks.findFirst({
       where: eq(schema.tasks.todoistId, tt.id),
@@ -35,8 +37,9 @@ export async function syncInbox(): Promise<schema.Task[]> {
           description: tt.description || null,
           dueDate: tt.due?.date || null,
           labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.recurring || false,
+          isRecurring: tt.due?.is_recurring || false,
           recurrenceRule: tt.due?.string || null,
+          status: 'inbox', // Todoist says it's inbox → local must agree
           todoistSyncedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })
@@ -54,7 +57,7 @@ export async function syncInbox(): Promise<schema.Task[]> {
           dueDate: tt.due?.date || null,
           priority: mapFromTodoistPriority(tt.priority),
           labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.recurring || false,
+          isRecurring: tt.due?.is_recurring || false,
           recurrenceRule: tt.due?.string || null,
           status: 'inbox',
           todoistSyncedAt: new Date().toISOString(),
@@ -62,6 +65,25 @@ export async function syncInbox(): Promise<schema.Task[]> {
         .returning();
       synced.push(created[0]);
     }
+  }
+
+  // Reconcile: local tasks marked 'inbox' that are no longer in Todoist inbox
+  // This means Todoist moved them (clarification push worked, or user moved manually)
+  const localInbox = await db.query.tasks.findMany({
+    where: eq(schema.tasks.status, 'inbox'),
+  });
+
+  for (const local of localInbox) {
+    if (!local.todoistId) continue;
+    if (todoistInboxIds.has(local.todoistId)) continue;
+
+    // Task was in our local inbox but is no longer in Todoist inbox.
+    // If it has enrichment (clarify confidence set), promote to clarified.
+    // Otherwise mark as active (user moved it manually in Todoist).
+    const newStatus = local.clarifyConfidence ? 'clarified' : 'active';
+    await db.update(schema.tasks)
+      .set({ status: newStatus, updatedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, local.id));
   }
 
   // Update sync state
@@ -80,7 +102,7 @@ export async function syncProjects(): Promise<schema.Project[]> {
   const synced: schema.Project[] = [];
 
   for (const tp of todoistProjects) {
-    if (tp.is_inbox_project) continue; // Skip inbox pseudo-project
+    if (tp.inbox_project) continue; // Skip inbox pseudo-project
 
     const existing = await db.query.projects.findFirst({
       where: eq(schema.projects.todoistId, tp.id),
@@ -115,7 +137,7 @@ export async function syncProjects(): Promise<schema.Project[]> {
 export async function syncAllTasks(): Promise<schema.Task[]> {
   const allTasks = await todoist.getTasks();
   const projects = await todoist.getProjects();
-  const inboxId = projects.find(p => p.is_inbox_project)?.id;
+  const inboxId = projects.find(p => p.inbox_project)?.id;
   const synced: schema.Task[] = [];
 
   for (const tt of allTasks) {
@@ -141,7 +163,7 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
           projectId: localProjectId,
           dueDate: tt.due?.date || null,
           labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.recurring || false,
+          isRecurring: tt.due?.is_recurring || false,
           recurrenceRule: tt.due?.string || null,
           todoistSyncedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -160,7 +182,7 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
           dueDate: tt.due?.date || null,
           priority: mapFromTodoistPriority(tt.priority),
           labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.recurring || false,
+          isRecurring: tt.due?.is_recurring || false,
           recurrenceRule: tt.due?.string || null,
           status: isInbox ? 'inbox' : 'active',
           todoistSyncedAt: new Date().toISOString(),
@@ -180,26 +202,50 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
   return synced;
 }
 
-export async function pushTaskToTodoist(localTask: schema.Task): Promise<void> {
-  if (!localTask.todoistId) return;
+export async function pushTaskToTodoist(localTask: schema.Task): Promise<boolean> {
+  if (!localTask.todoistId) return false;
 
-  // Find Todoist project ID
+  // Resolve Todoist project — create in Todoist if it only exists locally
   let todoistProjectId: string | undefined;
   if (localTask.projectId) {
     const project = await db.query.projects.findFirst({
       where: eq(schema.projects.id, localTask.projectId),
     });
-    todoistProjectId = project?.todoistId || undefined;
+
+    if (project) {
+      if (project.todoistId) {
+        todoistProjectId = project.todoistId;
+      } else {
+        // Check if a Todoist project with this name already exists
+        const existing = await todoist.findProjectByName(project.name);
+        if (existing) {
+          todoistProjectId = existing.id;
+        } else {
+          // Create the project in Todoist
+          const created = await todoist.createProject({ name: project.name });
+          todoistProjectId = created.id;
+        }
+        // Store the Todoist ID back on the local project
+        await db.update(schema.projects)
+          .set({ todoistId: todoistProjectId, todoistSyncedAt: new Date().toISOString() })
+          .where(eq(schema.projects.id, project.id));
+      }
+    }
   }
 
+  // Update task content, priority, labels, description (v1 update does NOT move)
   await todoist.updateTask(localTask.todoistId, {
     content: localTask.title,
     description: localTask.nextAction || localTask.description || undefined,
-    project_id: todoistProjectId,
     priority: mapToTodoistPriority(localTask.priority || 4),
     labels: JSON.parse(localTask.labels || '[]'),
     due_date: localTask.dueDate || undefined,
   });
+
+  // Move task to the target project (separate API call in v1)
+  if (todoistProjectId) {
+    await todoist.moveTask(localTask.todoistId, { project_id: todoistProjectId });
+  }
 
   // Add context as comment if present
   if (localTask.contextNotes) {
@@ -208,9 +254,66 @@ export async function pushTaskToTodoist(localTask: schema.Task): Promise<void> {
       content: `🔥 **Burn-Down Engine Context**\n\n${localTask.contextNotes}`,
     });
   }
+
+  return true;
+}
+
+/**
+ * Push locally-created subtasks to Todoist as children of the parent task.
+ * Returns the number of subtasks successfully created.
+ */
+export async function pushSubtasksToTodoist(
+  parentTodoistId: string,
+  subtasks: schema.Task[],
+  todoistProjectId?: string,
+): Promise<number> {
+  let created = 0;
+  for (const sub of subtasks) {
+    if (sub.todoistId) continue; // Already in Todoist
+
+    const todoistSub = await todoist.createTask({
+      content: sub.title,
+      description: sub.nextAction || undefined,
+      parent_id: parentTodoistId,
+      priority: mapToTodoistPriority(sub.priority || 4),
+      labels: JSON.parse(sub.labels || '[]'),
+      project_id: todoistProjectId,
+    });
+
+    // Store the Todoist ID back on the local subtask
+    await db.update(schema.tasks)
+      .set({ todoistId: todoistSub.id, todoistSyncedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, sub.id));
+
+    created++;
+  }
+  return created;
 }
 
 export async function completeTaskInTodoist(localTask: schema.Task): Promise<void> {
   if (!localTask.todoistId) return;
   await todoist.completeTask(localTask.todoistId);
+}
+
+export async function killTaskInTodoist(localTask: schema.Task): Promise<void> {
+  if (!localTask.todoistId) return;
+  await todoist.deleteTask(localTask.todoistId);
+}
+
+export async function syncTaskDueDate(localTask: schema.Task): Promise<void> {
+  if (!localTask.todoistId) return;
+  await todoist.updateTask(localTask.todoistId, {
+    due_date: localTask.dueDate || undefined,
+  });
+}
+
+export async function syncTaskLabels(localTask: schema.Task): Promise<void> {
+  if (!localTask.todoistId) return;
+  await todoist.updateTask(localTask.todoistId, {
+    labels: JSON.parse(localTask.labels || '[]'),
+  });
+}
+
+export async function addTodoistComment(todoistTaskId: string, content: string): Promise<void> {
+  await todoist.addComment({ task_id: todoistTaskId, content });
 }

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { trackLLMInteraction } from './tracking';
 import { LLMOperation } from './router';
+import { getAppSettings } from '@/lib/db/settings';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY || '',
@@ -10,8 +11,9 @@ export async function claudeGenerate(opts: {
   system: string;
   prompt: string;
   operation?: LLMOperation;
+  model?: string;
 }): Promise<string> {
-  const modelName = 'claude-opus-4-20250514';
+  const modelName = opts.model || (await getAppSettings()).heavyModel!;
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: modelName,
@@ -47,11 +49,13 @@ export async function claudeGenerateJSON<T>(opts: {
   system: string;
   prompt: string;
   operation?: LLMOperation;
+  model?: string;
 }): Promise<T> {
   const raw = await claudeGenerate({
     system: opts.system + '\n\nRespond with valid JSON only. No markdown fences.',
     prompt: opts.prompt,
     operation: opts.operation,
+    model: opts.model,
   });
 
   // Strip any markdown fences if present

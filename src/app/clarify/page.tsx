@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Sparkles, Check, Pencil, ChevronDown, ChevronUp, Loader2, MessageCircle, Mic, MicOff } from 'lucide-react';
+import { Sparkles, Check, ChevronDown, ChevronUp, Loader2, MessageCircle, Mic, MicOff, X, RotateCcw, Pencil, CheckCircle2, Undo2 } from 'lucide-react';
 import { PriorityBadge, EnergyBadge, TimeEstimate, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { cn } from '@/lib/utils';
 
@@ -30,10 +30,13 @@ interface ProcessedTask {
   id: string;
   originalText: string;
   result: ClarifyResult | null;
-  status: 'pending' | 'processing' | 'done' | 'needs-input' | 'approved' | 'error';
+  status: 'pending' | 'processing' | 'done' | 'needs-input' | 'approved' | 'error' | 'rejected' | 'completed';
   expanded: boolean;
+  selected: boolean;
   answer?: string;
   streamText?: string;
+  editing?: boolean;
+  editDraft?: Partial<ClarifyResult>;
 }
 
 export default function ClarifyPage() {
@@ -84,6 +87,7 @@ export default function ClarifyPage() {
             result: null,
             status: 'pending',
             expanded: false,
+            selected: true,
           })));
         }
       } finally {
@@ -93,23 +97,37 @@ export default function ClarifyPage() {
     loadInbox();
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const processAll = async () => {
+  const toggleSelect = (index: number) => {
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, selected: !t.selected } : t
+    ));
+  };
+
+  const selectAll = () => {
+    const allSelected = tasks.filter(t => t.status === 'pending').every(t => t.selected);
+    setTasks(prev => prev.map(t =>
+      t.status === 'pending' ? { ...t, selected: !allSelected } : t
+    ));
+  };
+
+  const processSelected = async () => {
     setProcessing(true);
     setProcessedCount(0);
 
-    for (let i = 0; i < tasks.length; i++) {
-      if (tasks[i].status === 'approved') continue;
+    const toProcess = tasks
+      .map((t, i) => ({ task: t, index: i }))
+      .filter(({ task }) => task.selected && (task.status === 'pending' || task.status === 'error'));
 
+    for (const { task, index } of toProcess) {
       setTasks(prev => prev.map((t, idx) =>
-        idx === i ? { ...t, status: 'processing', streamText: '' } : t
+        idx === index ? { ...t, status: 'processing', streamText: '' } : t
       ));
 
       try {
-        // Use streaming endpoint for live "AI thinking" display
         const res = await fetch('/api/clarify-stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: tasks[i].id }),
+          body: JSON.stringify({ taskId: task.id }),
         });
 
         if (res.ok && res.body) {
@@ -122,17 +140,16 @@ export default function ClarifyPage() {
             if (done) break;
             accumulated += decoder.decode(value, { stream: true });
             setTasks(prev => prev.map((t, idx) =>
-              idx === i ? { ...t, streamText: accumulated } : t
+              idx === index ? { ...t, streamText: accumulated } : t
             ));
           }
 
-          // Parse the final streamed JSON
           const cleaned = accumulated.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
           const result: ClarifyResult = JSON.parse(cleaned);
           const needsInput = result.confidence < 0.7 && result.questions.length > 0;
 
           setTasks(prev => prev.map((t, idx) =>
-            idx === i ? {
+            idx === index ? {
               ...t,
               result,
               status: needsInput ? 'needs-input' : 'done',
@@ -142,29 +159,28 @@ export default function ClarifyPage() {
           ));
           setProcessedCount(prev => prev + 1);
         } else {
-          // Fallback to non-streaming
           const fallback = await fetch('/api/todoist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'clarify', taskId: tasks[i].id }),
+            body: JSON.stringify({ action: 'clarify', taskId: task.id }),
           });
 
           if (fallback.ok) {
             const result: ClarifyResult = await fallback.json();
             const needsInput = result.confidence < 0.7 && result.questions.length > 0;
             setTasks(prev => prev.map((t, idx) =>
-              idx === i ? { ...t, result, status: needsInput ? 'needs-input' : 'done', expanded: needsInput, streamText: undefined } : t
+              idx === index ? { ...t, result, status: needsInput ? 'needs-input' : 'done', expanded: needsInput, streamText: undefined } : t
             ));
             setProcessedCount(prev => prev + 1);
           } else {
             setTasks(prev => prev.map((t, idx) =>
-              idx === i ? { ...t, status: 'error', streamText: undefined } : t
+              idx === index ? { ...t, status: 'error', streamText: undefined } : t
             ));
           }
         }
       } catch {
         setTasks(prev => prev.map((t, idx) =>
-          idx === i ? { ...t, status: 'error', streamText: undefined } : t
+          idx === index ? { ...t, status: 'error', streamText: undefined } : t
         ));
       }
     }
@@ -176,23 +192,94 @@ export default function ClarifyPage() {
     const task = tasks[index];
     if (!task.result) return;
 
+    // Apply any overrides from editing
+    const clarificationToApply = task.editDraft
+      ? { ...task.result, ...task.editDraft }
+      : task.result;
+
+    // Optimistically collapse
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, status: 'approved', expanded: false, editing: false, editDraft: undefined } : t
+    ));
+
     try {
-      await fetch('/api/todoist', {
+      const res = await fetch('/api/todoist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'apply-clarification',
           taskId: task.id,
-          clarification: task.result,
+          clarification: clarificationToApply,
         }),
       });
-
+      if (!res.ok) {
+        // Revert on failure
+        setTasks(prev => prev.map((t, idx) =>
+          idx === index ? { ...t, status: 'done', result: clarificationToApply } : t
+        ));
+      }
+    } catch {
       setTasks(prev => prev.map((t, idx) =>
-        idx === index ? { ...t, status: 'approved' } : t
+        idx === index ? { ...t, status: 'done', result: clarificationToApply } : t
       ));
-    } catch (error) {
-      console.error('Approve failed:', error);
     }
+  };
+
+  const unapproveTask = (index: number) => {
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, status: 'done', expanded: true } : t
+    ));
+  };
+
+  const rejectTask = (index: number) => {
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, status: 'rejected', result: null, expanded: false, editing: false, editDraft: undefined } : t
+    ));
+  };
+
+  const completeTaskInClarify = async (index: number) => {
+    const task = tasks[index];
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, status: 'completed' } : t
+    ));
+
+    try {
+      await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete-in-clarify', taskId: task.id }),
+      });
+    } catch (error) {
+      console.error('Complete in clarify failed:', error);
+    }
+  };
+
+  const startEditing = (index: number) => {
+    const task = tasks[index];
+    if (!task.result) return;
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, editing: true, expanded: true, editDraft: { ...t.result! } } : t
+    ));
+  };
+
+  const updateDraft = (index: number, field: string, value: any) => {
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, editDraft: { ...t.editDraft, [field]: value } } : t
+    ));
+  };
+
+  const cancelEditing = (index: number) => {
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, editing: false, editDraft: undefined } : t
+    ));
+  };
+
+  const saveEdits = (index: number) => {
+    const task = tasks[index];
+    if (!task.editDraft) return;
+    setTasks(prev => prev.map((t, idx) =>
+      idx === index ? { ...t, result: { ...t.result!, ...t.editDraft }, editing: false, editDraft: undefined } : t
+    ));
   };
 
   const approveAllDone = async () => {
@@ -239,9 +326,13 @@ export default function ClarifyPage() {
     }
   };
 
+  const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'error');
+  const selectedCount = pendingTasks.filter(t => t.selected).length;
   const doneCount = tasks.filter(t => t.status === 'done').length;
   const needsInputCount = tasks.filter(t => t.status === 'needs-input').length;
   const approvedCount = tasks.filter(t => t.status === 'approved').length;
+  const rejectedCount = tasks.filter(t => t.status === 'rejected').length;
+  const completedCount = tasks.filter(t => t.status === 'completed').length;
 
   if (loading) {
     return (
@@ -262,16 +353,17 @@ export default function ClarifyPage() {
         action={
           tasks.length > 0 && !processing ? (
             <button
-              onClick={processAll}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              onClick={processSelected}
+              disabled={selectedCount === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               <Sparkles className="h-4 w-4" />
-              Process All ({tasks.filter(t => t.status === 'pending').length})
+              Process{selectedCount < pendingTasks.length ? ` Selected (${selectedCount})` : ` All (${selectedCount})`}
             </button>
           ) : processing ? (
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Processing {processedCount}/{tasks.length}...
+              Processing {processedCount}/{selectedCount}...
             </div>
           ) : null
         }
@@ -298,6 +390,9 @@ export default function ClarifyPage() {
                     key={task.id}
                     task={task}
                     onSubmit={(answer) => submitAnswer(i, answer)}
+                    onComplete={() => completeTaskInClarify(i)}
+                    onReject={() => rejectTask(i)}
+                    onEdit={() => startEditing(i)}
                   />
                 ))}
               </div>
@@ -305,19 +400,21 @@ export default function ClarifyPage() {
           )}
 
           {/* Auto-Processed Section */}
-          {doneCount > 0 && (
+          {(doneCount > 0 || approvedCount > 0) && (
             <div className="mb-6">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-green-400">
                   <Check className="h-4 w-4" />
-                  Processed ({doneCount})
+                  Processed ({doneCount + approvedCount})
                 </h2>
-                <button
-                  onClick={approveAllDone}
-                  className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
-                >
-                  Approve All
-                </button>
+                {doneCount > 0 && (
+                  <button
+                    onClick={approveAllDone}
+                    className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
+                  >
+                    Approve All ({doneCount})
+                  </button>
+                )}
               </div>
               <div className="space-y-2">
                 {tasks.map((task, i) => (task.status === 'done' || task.status === 'approved') && task.result && (
@@ -327,6 +424,13 @@ export default function ClarifyPage() {
                     expanded={task.expanded}
                     onToggle={() => toggleExpand(i)}
                     onApprove={() => approveTask(i)}
+                    onUnapprove={() => unapproveTask(i)}
+                    onReject={() => rejectTask(i)}
+                    onComplete={() => completeTaskInClarify(i)}
+                    onEdit={() => startEditing(i)}
+                    onUpdateDraft={(field, value) => updateDraft(i, field, value)}
+                    onSaveEdits={() => saveEdits(i)}
+                    onCancelEditing={() => cancelEditing(i)}
                   />
                 ))}
               </div>
@@ -352,14 +456,46 @@ export default function ClarifyPage() {
             </div>
           )}
 
-          {/* Pending Section */}
-          {tasks.some(t => t.status === 'pending' || (t.status === 'processing' && !t.streamText)) && (
-            <div>
+          {/* Completed / Rejected Summary */}
+          {(completedCount > 0 || rejectedCount > 0) && (
+            <div className="mb-6">
               <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
-                Pending ({tasks.filter(t => t.status === 'pending').length})
+                Resolved ({completedCount + rejectedCount})
               </h2>
               <div className="space-y-1">
-                {tasks.map((task) => (task.status === 'pending' || (task.status === 'processing' && !task.streamText)) && (
+                {tasks.map(task => (task.status === 'completed' || task.status === 'rejected') && (
+                  <div key={task.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground opacity-50">
+                    {task.status === 'completed' ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4 text-amber-400" />
+                    )}
+                    <span className={task.status === 'completed' ? 'line-through' : ''}>{task.originalText}</span>
+                    <span className="ml-auto text-xs">
+                      {task.status === 'completed' ? 'Completed' : 'Back to inbox'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending Section */}
+          {pendingTasks.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-muted-foreground">
+                  Pending ({pendingTasks.length})
+                </h2>
+                <button
+                  onClick={selectAll}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {pendingTasks.every(t => t.selected) ? 'Deselect All' : 'Select All'}
+                </button>
+              </div>
+              <div className="space-y-1">
+                {tasks.map((task, i) => (task.status === 'pending' || task.status === 'error' || (task.status === 'processing' && !task.streamText)) && (
                   <div
                     key={task.id}
                     className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground"
@@ -367,9 +503,22 @@ export default function ClarifyPage() {
                     {task.status === 'processing' ? (
                       <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     ) : (
-                      <div className="h-4 w-4 rounded border border-border" />
+                      <button
+                        onClick={() => toggleSelect(i)}
+                        className={cn(
+                          'h-4 w-4 rounded border transition-colors shrink-0',
+                          task.selected
+                            ? 'border-primary bg-primary'
+                            : 'border-border hover:border-muted-foreground',
+                        )}
+                      >
+                        {task.selected && <Check className="h-3 w-3 text-primary-foreground" />}
+                      </button>
                     )}
-                    <span className="italic">{task.originalText}</span>
+                    <span className={cn('italic', task.status === 'error' && 'text-destructive')}>
+                      {task.originalText}
+                      {task.status === 'error' && ' (failed — will retry)'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -386,9 +535,15 @@ export default function ClarifyPage() {
 function QuestionCard({
   task,
   onSubmit,
+  onComplete,
+  onReject,
+  onEdit,
 }: {
   task: ProcessedTask;
   onSubmit: (answer: string) => void;
+  onComplete: () => void;
+  onReject: () => void;
+  onEdit: () => void;
 }) {
   const [answer, setAnswer] = useState('');
   const [recording, setRecording] = useState(false);
@@ -490,6 +645,17 @@ function QuestionCard({
           Send
         </button>
       </div>
+      <div className="mt-2 flex gap-2">
+        <button onClick={onEdit} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+          <Pencil className="mr-1 inline h-3 w-3" /> Edit & Approve
+        </button>
+        <button onClick={onComplete} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+          <CheckCircle2 className="mr-1 inline h-3 w-3" /> Already Done
+        </button>
+        <button onClick={onReject} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+          <X className="mr-1 inline h-3 w-3" /> Reject
+        </button>
+      </div>
     </div>
   );
 }
@@ -499,39 +665,110 @@ function ProcessedCard({
   expanded,
   onToggle,
   onApprove,
+  onUnapprove,
+  onReject,
+  onComplete,
+  onEdit,
+  onUpdateDraft,
+  onSaveEdits,
+  onCancelEditing,
 }: {
   task: ProcessedTask;
   expanded: boolean;
   onToggle: () => void;
   onApprove: () => void;
+  onUnapprove: () => void;
+  onReject: () => void;
+  onComplete: () => void;
+  onEdit: () => void;
+  onUpdateDraft: (field: string, value: any) => void;
+  onSaveEdits: () => void;
+  onCancelEditing: () => void;
 }) {
   const r = task.result!;
+  const draft = task.editDraft;
   const isApproved = task.status === 'approved';
+  const isEditing = task.editing;
+
+  // Collapsed approved card
+  if (isApproved && !expanded) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-2.5 opacity-70">
+        <Check className="h-4 w-4 text-green-400 shrink-0" />
+        <span className="text-sm text-muted-foreground line-through flex-1">{task.originalText}</span>
+        <span className="text-xs text-green-400">→ {r.title}</span>
+        <button onClick={onToggle} className="text-xs text-muted-foreground hover:text-foreground">
+          <ChevronDown className="h-3 w-3" />
+        </button>
+        <button onClick={onUnapprove} className="text-xs text-muted-foreground hover:text-foreground" title="Undo approval">
+          <Undo2 className="h-3 w-3" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={cn(
       'rounded-xl border p-4 transition-all',
       isApproved
-        ? 'border-green-500/20 bg-green-500/5 opacity-60'
+        ? 'border-green-500/20 bg-green-500/5'
         : 'border-border bg-card',
     )}>
       {/* Header */}
       <div className="flex items-start gap-3">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="mb-1 text-xs text-muted-foreground line-through">{task.originalText}</div>
-          <div className="font-medium">{r.title}</div>
-          <div className="mt-1 text-sm text-muted-foreground">{r.nextAction}</div>
+          {isEditing ? (
+            <input
+              value={draft?.title ?? r.title}
+              onChange={(e) => onUpdateDraft('title', e.target.value)}
+              className="w-full rounded border border-primary/50 bg-card px-2 py-1 text-sm font-medium focus:outline-none focus:border-primary"
+            />
+          ) : (
+            <div className="font-medium">{r.title}</div>
+          )}
+          {isEditing ? (
+            <input
+              value={draft?.nextAction ?? r.nextAction}
+              onChange={(e) => onUpdateDraft('nextAction', e.target.value)}
+              className="mt-1 w-full rounded border border-primary/50 bg-card px-2 py-1 text-sm text-muted-foreground focus:outline-none focus:border-primary"
+            />
+          ) : (
+            <div className="mt-1 text-sm text-muted-foreground">{r.nextAction}</div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <PriorityBadge priority={r.priority} />
-          <EnergyBadge level={r.energyLevel} />
+          {isEditing ? (
+            <select
+              value={draft?.priority ?? r.priority}
+              onChange={(e) => onUpdateDraft('priority', Number(e.target.value))}
+              className="rounded border border-primary/50 bg-card px-1.5 py-0.5 text-xs focus:outline-none"
+            >
+              <option value={1}>P1</option>
+              <option value={2}>P2</option>
+              <option value={3}>P3</option>
+              <option value={4}>P4</option>
+            </select>
+          ) : (
+            <PriorityBadge priority={r.priority} />
+          )}
+          <EnergyBadge level={isEditing ? (draft?.energyLevel ?? r.energyLevel) : r.energyLevel} />
           <TimeEstimate minutes={r.timeEstimateMin} />
         </div>
       </div>
 
       {/* Meta row */}
-      <div className="mt-2 flex items-center gap-2">
-        <ProjectBadge name={r.projectName} />
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {isEditing ? (
+          <input
+            value={draft?.projectName ?? r.projectName}
+            onChange={(e) => onUpdateDraft('projectName', e.target.value)}
+            className="rounded border border-primary/50 bg-card px-2 py-0.5 text-xs focus:outline-none"
+            placeholder="Project name"
+          />
+        ) : (
+          <ProjectBadge name={r.projectName} />
+        )}
         {r.labels.map(l => (
           <span key={l} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
             @{l}
@@ -545,12 +782,22 @@ function ProcessedCard({
       {/* Expanded detail */}
       {expanded && (
         <div className="mt-3 space-y-2 border-t border-border pt-3">
-          {r.contextNotes && (
+          {isEditing ? (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Context Notes</label>
+              <textarea
+                value={draft?.contextNotes ?? r.contextNotes}
+                onChange={(e) => onUpdateDraft('contextNotes', e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded border border-primary/50 bg-card px-2 py-1 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+          ) : r.contextNotes ? (
             <div className="text-sm">
               <span className="font-medium text-muted-foreground">Context: </span>
               {r.contextNotes}
             </div>
-          )}
+          ) : null}
           {r.decompositionNeeded && r.subtasks.length > 0 && (
             <div>
               <span className="text-sm font-medium text-muted-foreground">Subtasks:</span>
@@ -568,22 +815,69 @@ function ProcessedCard({
       )}
 
       {/* Actions */}
-      <div className="mt-3 flex items-center gap-2">
-        {!isApproved && (
-          <button
-            onClick={onApprove}
-            className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
-          >
-            <Check className="mr-1 inline h-3 w-3" />
-            Approve
-          </button>
-        )}
-        {isApproved && (
-          <span className="text-xs font-medium text-green-400">✓ Approved</span>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {isEditing ? (
+          <>
+            <button
+              onClick={onSaveEdits}
+              className="rounded-lg bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/30"
+            >
+              <Check className="mr-1 inline h-3 w-3" /> Save & Approve
+            </button>
+            <button
+              onClick={onCancelEditing}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            {!isApproved && (
+              <button
+                onClick={onApprove}
+                className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
+              >
+                <Check className="mr-1 inline h-3 w-3" /> Approve
+              </button>
+            )}
+            {isApproved && (
+              <button
+                onClick={onUnapprove}
+                className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/30"
+              >
+                <Undo2 className="mr-1 inline h-3 w-3" /> Undo
+              </button>
+            )}
+            {!isApproved && (
+              <button
+                onClick={onEdit}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+              >
+                <Pencil className="mr-1 inline h-3 w-3" /> Edit
+              </button>
+            )}
+            {!isApproved && (
+              <button
+                onClick={onComplete}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+              >
+                <CheckCircle2 className="mr-1 inline h-3 w-3" /> Already Done
+              </button>
+            )}
+            {!isApproved && (
+              <button
+                onClick={onReject}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-destructive/70 hover:bg-destructive/10"
+              >
+                <X className="mr-1 inline h-3 w-3" /> Reject
+              </button>
+            )}
+          </>
         )}
         <button
           onClick={onToggle}
-          className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+          className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent ml-auto"
         >
           {expanded ? <ChevronUp className="inline h-3 w-3" /> : <ChevronDown className="inline h-3 w-3" />}
           {expanded ? ' Less' : ' More'}

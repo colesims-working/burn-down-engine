@@ -8,32 +8,27 @@ A daily-driven GTD intelligence layer for Todoist. Turns messy captures into per
 # 1. Install dependencies
 npm install
 
-# 2. Copy env template and fill in your keys
-cp .env.example .env.local
+# 2. Set up authentication (interactive — prompts for password)
+npm run setup
 
-# 3. Set up the database
+# 3. Fill in API keys in .env.local
+# Open .env.local and add your keys for Todoist, Gemini, Anthropic, OpenAI
+
+# 4. Set up the database
 # Install Turso CLI: https://docs.turso.tech/cli/installation
-turso db create burn-down-engine --location iad
+turso db create burn-down-engine
 turso db show burn-down-engine --url    # → TURSO_DATABASE_URL
 turso db tokens create burn-down-engine  # → TURSO_AUTH_TOKEN
 
-# 4. Push database schema
+# 5. Push database schema
 npm run db:push
 
-# 5. Bootstrap your knowledge base (optional but recommended)
+# 6. Bootstrap your knowledge base (optional but recommended)
 cp seed.example.json seed.json
 # Edit seed.json with YOUR people, role, preferences, etc.
 npm run db:seed
 
-# 6. Generate a password hash
-node -e "require('bcryptjs').hash('your-password', 10).then(console.log)"
-# → Put in APP_PASSWORD_HASH
-
-# 7. Generate a session secret
-openssl rand -hex 32
-# → Put in SESSION_SECRET
-
-# 8. Run dev server
+# 7. Run dev server
 npm run dev
 ```
 

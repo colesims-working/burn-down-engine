@@ -5,6 +5,7 @@ import { geminiStream } from '@/lib/llm/gemini';
 import { buildContext } from '@/lib/llm/context';
 import { CLARIFY_SYSTEM_PROMPT } from '@/lib/llm/prompts/clarify';
 import { trackLLMInteraction } from '@/lib/llm/tracking';
+import { getAppSettings } from '@/lib/db/settings';
 import { eq } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
   const prompt = `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"`;
 
   const startTime = Date.now();
+  const settings = await getAppSettings();
   const stream = await geminiStream({
     system: CLARIFY_SYSTEM_PROMPT + '\n\nRespond with valid JSON only. No markdown fences.',
     prompt,
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
         // Track the LLM interaction after stream completes
         trackLLMInteraction({
           operation: 'clarify_task',
-          model: 'gemini-2.5-flash-preview-05-20',
+          model: settings.primaryModel!,
           input: prompt,
           output: fullText,
           startTime,

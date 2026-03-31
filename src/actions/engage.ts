@@ -6,9 +6,10 @@ import {
   completeTask as completeTaskEngine,
   bumpTask as bumpTaskEngine,
   blockTask as blockTaskEngine,
+  waitTask as waitTaskEngine,
   handleFire,
 } from '@/lib/priority/engine';
-import { completeTaskInTodoist } from '@/lib/todoist/sync';
+import { completeTaskInTodoist, killTaskInTodoist } from '@/lib/todoist/sync';
 import { eq } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
@@ -43,6 +44,12 @@ export async function blockTaskAction(taskId: string, blockerNote: string) {
   return task;
 }
 
+export async function waitTaskAction(taskId: string, waitingFor: string) {
+  const task = await waitTaskEngine(taskId, waitingFor);
+  revalidatePath('/engage');
+  return task;
+}
+
 export async function handleFireAction(description: string) {
   const result = await handleFire({ description });
   revalidatePath('/engage');
@@ -50,6 +57,10 @@ export async function handleFireAction(description: string) {
 }
 
 export async function killTaskAction(taskId: string) {
+  const task = await db.query.tasks.findFirst({
+    where: eq(schema.tasks.id, taskId),
+  });
+
   const updated = await db.update(schema.tasks)
     .set({ status: 'killed', updatedAt: new Date().toISOString() })
     .where(eq(schema.tasks.id, taskId))
@@ -60,6 +71,15 @@ export async function killTaskAction(taskId: string) {
     action: 'killed',
     details: JSON.stringify({ killedAt: new Date().toISOString() }),
   });
+
+  // Delete from Todoist (source of truth)
+  if (task) {
+    try {
+      await killTaskInTodoist(task);
+    } catch (error) {
+      console.error('Failed to delete killed task in Todoist:', error);
+    }
+  }
 
   revalidatePath('/engage');
   return updated[0];

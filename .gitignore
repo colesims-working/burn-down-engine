@@ -30,6 +30,10 @@ yarn-error.log*
 # personal seed data (contains your names, roles, etc.)
 seed.json
 
+# review artifacts
+e2e/screenshots/
+e2e/review-report.md
+
 # vercel
 .vercel
 

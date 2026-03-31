@@ -1,8 +1,10 @@
 import { db, schema } from '@/lib/db/client';
-import { eq, and, ne, sql, asc } from 'drizzle-orm';
+import { eq, and, ne, sql, asc, lte } from 'drizzle-orm';
 import { llmGenerateJSON } from '@/lib/llm/router';
 import { buildContext } from '@/lib/llm/context';
 import { RANK_TASKS_PROMPT } from '@/lib/llm/prompts/engage';
+import { todoist } from '@/lib/todoist/client';
+import { syncTaskDueDate, syncTaskLabels, addTodoistComment, mapToTodoistPriority } from '@/lib/todoist/sync';
 import { format, addDays } from 'date-fns';
 
 // ─── Tier Assignment ─────────────────────────────────────────
@@ -79,6 +81,19 @@ export async function buildEngageList(): Promise<{
 }> {
   const today = format(new Date(), 'yyyy-MM-dd');
 
+  // Auto-resolve deferred tasks whose due date has arrived
+  const deferredDue = await db.query.tasks.findMany({
+    where: and(
+      eq(schema.tasks.status, 'deferred'),
+      lte(schema.tasks.dueDate, today),
+    ),
+  });
+  for (const t of deferredDue) {
+    await db.update(schema.tasks)
+      .set({ status: 'active', updatedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, t.id));
+  }
+
   // Get all active/relevant tasks
   const allTasks = await db.query.tasks.findMany({
     where: and(
@@ -87,11 +102,11 @@ export async function buildEngageList(): Promise<{
     ),
   });
 
-  const fires = allTasks.filter(t => t.priority === 0 && t.status !== 'completed');
-  const p1 = allTasks.filter(t => t.priority === 1 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked');
-  const p2 = allTasks.filter(t => t.priority === 2 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked');
-  const p3 = allTasks.filter(t => t.priority === 3 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked');
-  const p4 = allTasks.filter(t => t.priority === 4 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked');
+  const fires = allTasks.filter(t => t.priority === 0 && t.status !== 'completed' && t.status !== 'deferred');
+  const p1 = allTasks.filter(t => t.priority === 1 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
+  const p2 = allTasks.filter(t => t.priority === 2 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
+  const p3 = allTasks.filter(t => t.priority === 3 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
+  const p4 = allTasks.filter(t => t.priority === 4 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
   const waiting = allTasks.filter(t => t.status === 'waiting' || t.status === 'blocked');
 
   // Get today's completions
@@ -129,13 +144,32 @@ export async function handleFire(opts: {
       .where(eq(schema.tasks.id, opts.taskId))
       .returning();
     fireTask = updated[0];
+
+    // Sync priority to Todoist
+    if (fireTask.todoistId) {
+      try {
+        await todoist.updateTask(fireTask.todoistId, {
+          priority: mapToTodoistPriority(0),
+        });
+      } catch (e) {
+        console.error('Failed to sync fire priority to Todoist:', e);
+      }
+    }
   } else {
+    // Create in Todoist first (source of truth)
+    const todoistTask = await todoist.createTask({
+      content: opts.description,
+      priority: mapToTodoistPriority(0),
+    });
+
     const created = await db.insert(schema.tasks)
       .values({
+        todoistId: todoistTask.id,
         originalText: opts.description,
         title: opts.description,
         priority: 0,
         status: 'active',
+        todoistSyncedAt: new Date().toISOString(),
       })
       .returning();
     fireTask = created[0];
@@ -214,6 +248,13 @@ export async function bumpTask(taskId: string, reason?: string): Promise<schema.
     .where(eq(schema.tasks.id, taskId))
     .returning();
 
+  // Sync due date to Todoist
+  try {
+    await syncTaskDueDate(updated[0]);
+  } catch (e) {
+    console.error('Failed to sync bump due date to Todoist:', e);
+  }
+
   await db.insert(schema.taskHistory).values({
     taskId,
     action: 'bumped',
@@ -228,19 +269,74 @@ export async function bumpTask(taskId: string, reason?: string): Promise<schema.
 }
 
 export async function blockTask(taskId: string, blockerNote: string): Promise<schema.Task> {
+  const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
+  if (!task) throw new Error('Task not found');
+
+  // Add 'blocked' label locally
+  const labels: string[] = JSON.parse(task.labels || '[]');
+  if (!labels.includes('blocked')) labels.push('blocked');
+
   const updated = await db.update(schema.tasks)
     .set({
       status: 'blocked',
       blockerNote,
+      labels: JSON.stringify(labels),
       updatedAt: new Date().toISOString(),
     })
     .where(eq(schema.tasks.id, taskId))
     .returning();
 
+  // Sync to Todoist: update labels + add blocker comment
+  try {
+    await syncTaskLabels(updated[0]);
+    if (task.todoistId) {
+      await addTodoistComment(task.todoistId, `🚫 **Blocked:** ${blockerNote}`);
+    }
+  } catch (e) {
+    console.error('Failed to sync block to Todoist:', e);
+  }
+
   await db.insert(schema.taskHistory).values({
     taskId,
     action: 'blocked',
     details: JSON.stringify({ blocker: blockerNote }),
+  });
+
+  return updated[0];
+}
+
+export async function waitTask(taskId: string, waitingFor: string): Promise<schema.Task> {
+  const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
+  if (!task) throw new Error('Task not found');
+
+  // Add 'waiting-for' label locally
+  const labels: string[] = JSON.parse(task.labels || '[]');
+  if (!labels.includes('waiting-for')) labels.push('waiting-for');
+
+  const updated = await db.update(schema.tasks)
+    .set({
+      status: 'waiting',
+      blockerNote: waitingFor,
+      labels: JSON.stringify(labels),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(schema.tasks.id, taskId))
+    .returning();
+
+  // Sync to Todoist: update labels + add waiting comment
+  try {
+    await syncTaskLabels(updated[0]);
+    if (task.todoistId) {
+      await addTodoistComment(task.todoistId, `⏳ **Waiting for:** ${waitingFor}`);
+    }
+  } catch (e) {
+    console.error('Failed to sync wait to Todoist:', e);
+  }
+
+  await db.insert(schema.taskHistory).values({
+    taskId,
+    action: 'waiting',
+    details: JSON.stringify({ waitingFor }),
   });
 
   return updated[0];

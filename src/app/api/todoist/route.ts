@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db/client';
-import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist } from '@/lib/todoist/sync';
+import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist } from '@/lib/todoist/sync';
 import { todoist } from '@/lib/todoist/client';
-import { buildEngageList, completeTask, bumpTask, blockTask, handleFire } from '@/lib/priority/engine';
+import { buildEngageList, completeTask, bumpTask, blockTask, waitTask, handleFire } from '@/lib/priority/engine';
 import { clarifyTask, applyClarification, answerClarifyQuestion } from '@/actions/clarify';
 import { getDailyReviewData, generateDailyObservations, saveDailyReview, generateWeeklyReview } from '@/actions/reflect';
 import { runProjectAudit, getFilingSuggestions, organizeConversation } from '@/actions/organize';
 import { getKnowledgeEntries, getPeople, getKnowledgeStats, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry, createPerson, updatePerson, deletePerson } from '@/actions/knowledge';
+import { getAppSettings, updateAppSettings, getModelConfig, getDisabledModels } from '@/lib/db/settings';
+import { listAvailableModels, testModel } from '@/lib/llm/providers';
 import { eq, ne, and } from 'drizzle-orm';
 
 // ─── GET: Read operations ────────────────────────────────────
@@ -83,6 +85,18 @@ export async function GET(request: NextRequest) {
       case 'sync-state': {
         const state = await db.query.syncState.findFirst();
         return NextResponse.json(state || { lastFullSync: null, lastInboxSync: null });
+      }
+
+      case 'app-settings': {
+        const settings = await getAppSettings();
+        const modelConfig = getModelConfig(settings);
+        const disabledModels = getDisabledModels(settings);
+        return NextResponse.json({ ...settings, modelConfig, disabledModels });
+      }
+
+      case 'available-models': {
+        const models = await listAvailableModels();
+        return NextResponse.json(models);
       }
 
       default:
@@ -173,6 +187,7 @@ export async function POST(request: NextRequest) {
       }
 
       case 'kill': {
+        const taskToKill = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
         const killed = await db.update(schema.tasks)
           .set({ status: 'killed', updatedAt: new Date().toISOString() })
           .where(eq(schema.tasks.id, body.taskId))
@@ -182,7 +197,23 @@ export async function POST(request: NextRequest) {
           action: 'killed',
           details: JSON.stringify({ killedAt: new Date().toISOString() }),
         });
+        if (taskToKill) {
+          try { await killTaskInTodoist(taskToKill); } catch {}
+        }
         return NextResponse.json(killed[0]);
+      }
+
+      case 'wait': {
+        const waited = await waitTask(body.taskId, body.waitingFor);
+        return NextResponse.json(waited);
+      }
+
+      case 'complete-in-clarify': {
+        const taskToComplete = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        if (!taskToComplete) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+        const completedTask = await completeTask(body.taskId);
+        try { await completeTaskInTodoist(completedTask); } catch {}
+        return NextResponse.json(completedTask);
       }
 
       case 'update-task': {
@@ -330,6 +361,20 @@ export async function POST(request: NextRequest) {
       case 'delete-person': {
         await deletePerson(body.id);
         return NextResponse.json({ success: true });
+      }
+
+      case 'update-settings': {
+        const settings = await updateAppSettings(body.data);
+        return NextResponse.json(settings);
+      }
+
+      case 'test-model': {
+        const { provider, model } = body;
+        if (!provider || !model) {
+          return NextResponse.json({ error: 'provider and model required' }, { status: 400 });
+        }
+        const result = await testModel(provider, model);
+        return NextResponse.json(result);
       }
 
       default:
