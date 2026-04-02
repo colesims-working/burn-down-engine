@@ -22,8 +22,9 @@ export function PriorityBadge({ priority, size = 'sm' }: { priority: number; siz
         config.className,
         size === 'sm' ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-1 text-xs',
       )}
+      aria-label={`Priority ${config.label}`}
     >
-      <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+      <Icon className={size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'} aria-hidden="true" />
       {config.label}
     </span>
   );
@@ -44,8 +45,8 @@ export function EnergyBadge({ level }: { level: string | null }) {
   const Icon = config.icon;
 
   return (
-    <span className={cn('inline-flex items-center gap-1 text-[11px]', config.className)}>
-      <Icon className="h-3 w-3" />
+    <span className={cn('inline-flex items-center gap-1 text-[11px]', config.className)} aria-label={`Energy: ${config.label}`}>
+      <Icon className="h-3 w-3" aria-hidden="true" />
       {config.label}
     </span>
   );
@@ -59,8 +60,8 @@ export function TimeEstimate({ minutes }: { minutes: number | null }) {
   const display = minutes >= 60 ? `${Math.round(minutes / 60 * 10) / 10}h` : `${minutes}m`;
 
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-      <Clock className="h-3 w-3" />
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" aria-label={`Estimated time: ${display}`}>
+      <Clock className="h-3 w-3" aria-hidden="true" />
       {display}
     </span>
   );

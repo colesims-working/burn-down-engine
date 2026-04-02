@@ -37,12 +37,14 @@ export async function getProjectWithTasks(projectId: string) {
 }
 
 export async function runProjectAudit() {
-  const allProjects = await db.query.projects.findMany();
-  const allTasks = await db.query.tasks.findMany({
-    where: ne(schema.tasks.status, 'killed'),
-  });
+  // Parallelize all data fetching
+  const [allProjects, allTasks, context] = await Promise.all([
+    db.query.projects.findMany(),
+    db.query.tasks.findMany({ where: ne(schema.tasks.status, 'killed') }),
+    buildContext('', 'organize'),
+  ]);
 
-  const context = await buildContext('', 'organize');
+  const projectIdToName = new Map(allProjects.map(p => [p.id, p.name]));
 
   const projectSummaries = allProjects.map(p => {
     const projectTasks = allTasks.filter(t => t.projectId === p.id);
@@ -55,14 +57,16 @@ export async function runProjectAudit() {
       openTasks: activeTasks.length,
       totalTasks: projectTasks.length,
       lastActivity: p.lastActivityAt,
-      notes: p.notes,
     };
   });
+
+  // Only send active tasks to reduce token usage — use project names instead of IDs
+  const activeTasks = allTasks.filter(t => t.status !== 'completed');
 
   const result = await llmGenerateJSON<any>({
     operation: 'project_audit',
     system: PROJECT_AUDIT_PROMPT,
-    prompt: `## Context\n${context}\n\n## Project Registry\n${JSON.stringify(projectSummaries, null, 2)}\n\n## All Tasks\n${JSON.stringify(allTasks.map(t => ({ title: t.title, project: t.projectId, status: t.status, priority: t.priority })), null, 2)}`,
+    prompt: `## Context\n${context}\n\n## Project Registry\n${JSON.stringify(projectSummaries)}\n\n## Active Tasks (${activeTasks.length} of ${allTasks.length} total)\n${JSON.stringify(activeTasks.map(t => ({ title: t.title, project: projectIdToName.get(t.projectId || '') || 'Inbox', status: t.status, priority: t.priority })))}`,
   });
 
   // Process any knowledge extracted

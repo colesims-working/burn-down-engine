@@ -45,6 +45,8 @@ export default function OrganizePage() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatResponse, setChatResponse] = useState('');
   const [chatting, setChatting] = useState(false);
+  const [dismissedRecs, setDismissedRecs] = useState<Set<number>>(new Set());
+  const [actioningRec, setActioningRec] = useState<number | null>(null);
 
   // Filing state
   const [filingLoading, setFilingLoading] = useState(false);
@@ -76,9 +78,57 @@ export default function OrganizePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'project-audit' }),
       });
-      if (res.ok) setAudit(await res.json());
+      if (res.ok) {
+        setAudit(await res.json());
+        setDismissedRecs(new Set());
+      }
     } finally {
       setAuditing(false);
+    }
+  };
+
+  const handleAuditAction = async (recIndex: number, rec: AuditRecommendation, action: string, details: string) => {
+    setActioningRec(recIndex);
+    try {
+      const projectName = rec.projectNames[0];
+      const project = projects.find(p => p.name.toLowerCase() === projectName?.toLowerCase());
+
+      if (action === 'archive' && project) {
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'archive-project', projectId: project.id }),
+        });
+        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, status: 'archived' } : p));
+      } else if (action === 'pause' && project) {
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update-project', projectId: project.id, data: { status: 'paused' } }),
+        });
+        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, status: 'paused' } : p));
+      } else if (action === 'keep') {
+        // Just dismiss the recommendation
+      } else {
+        // For complex actions (split, merge, create, move, rename), ask the chat for guidance
+        setChatMessage(`${action}: ${details} (for ${rec.projectNames.join(', ')})`);
+        const res = await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'organize-chat',
+            message: `I want to "${action}" for project(s): ${rec.projectNames.join(', ')}. Details: ${details}. What specific steps should I take?`,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setChatResponse(data.response);
+          setChatMessage('');
+        }
+      }
+      setDismissedRecs(prev => new Set([...prev, recIndex]));
+    } finally {
+      setActioningRec(null);
     }
   };
 
@@ -167,9 +217,23 @@ export default function OrganizePage() {
     return 'text-red-400';
   };
 
+  const getHealthLabel = (project: Project): string => {
+    if (!project.lastActivityAt) return 'Stale';
+    const days = Math.floor((Date.now() - new Date(project.lastActivityAt).getTime()) / 86400000);
+    if (days <= 7) return 'Active';
+    if (days <= 14) return 'Aging';
+    return 'Stale';
+  };
+
   const getHealthDot = (project: Project) => {
     const color = getHealthColor(project);
-    return <span className={cn('inline-block h-2 w-2 rounded-full', color.replace('text-', 'bg-'))} />;
+    const label = getHealthLabel(project);
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span className={cn('inline-block h-2 w-2 rounded-full', color.replace('text-', 'bg-'))} aria-hidden="true" />
+        <span className={cn('text-[10px] font-medium', color)}>{label}</span>
+      </span>
+    );
   };
 
   const active = projects.filter(p => p.status === 'active');
@@ -228,7 +292,7 @@ export default function OrganizePage() {
                       </span>
                     )}
                     <span className="text-xs text-muted-foreground">
-                      {p.openActionCount || 0} tasks
+                      {p.openActionCount || 0} {(p.openActionCount || 0) === 1 ? 'task' : 'tasks'}
                     </span>
                     {p.lastActivityAt && (
                       <span className="text-xs text-muted-foreground">
@@ -240,6 +304,30 @@ export default function OrganizePage() {
               </div>
             )}
           </div>
+
+          {/* GTD Integrity Warning: Projects with no next action */}
+          {!loading && active.filter(p => (p.openActionCount || 0) === 0).length > 0 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-400" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-amber-400/70">
+                  GTD: Projects Without Next Actions
+                </h3>
+              </div>
+              <p className="mb-3 text-xs text-muted-foreground">
+                In GTD, every active project must have at least one next action. Consider adding actions or moving these to Someday/Maybe.
+              </p>
+              <div className="space-y-1">
+                {active.filter(p => (p.openActionCount || 0) === 0).map(p => (
+                  <div key={p.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
+                    <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                    <span className="flex-1 font-medium">{p.name}</span>
+                    <span className="text-xs text-amber-400">0 actions</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Audit Section */}
           <div className="rounded-xl border border-border bg-card p-4">
@@ -258,17 +346,32 @@ export default function OrganizePage() {
             {audit && (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">{audit.overallHealth}</p>
-                {audit.recommendations.map((rec, i) => (
+                {audit.recommendations.map((rec, i) => dismissedRecs.has(i) ? null : (
                   <div key={i} className="rounded-lg border border-border p-3">
+                    {rec.projectNames?.length > 0 && (
+                      <div className="mb-1.5 flex flex-wrap gap-1.5">
+                        {rec.projectNames.map((name, k) => (
+                          <span key={k} className="rounded bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                            {name}
+                          </span>
+                        ))}
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {rec.type}
+                        </span>
+                      </div>
+                    )}
                     <p className="mb-1 text-sm">{rec.observation}</p>
                     <p className="mb-2 text-xs text-muted-foreground">{rec.reasoning}</p>
                     <div className="flex flex-wrap gap-2">
                       {rec.options.map((opt, j) => (
                         <button
                           key={j}
-                          className="rounded bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                          disabled={actioningRec === i}
+                          onClick={() => handleAuditAction(i, rec, opt.action, opt.details)}
+                          title={opt.details}
+                          className="rounded bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
                         >
-                          {opt.label}
+                          {actioningRec === i ? <Loader2 className="inline h-3 w-3 animate-spin" /> : opt.label}
                         </button>
                       ))}
                     </div>
@@ -285,11 +388,13 @@ export default function OrganizePage() {
                   onChange={(e) => setChatMessage(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && sendChat()}
                   placeholder="Ask about a project..."
+                  aria-label="Chat about project organization"
                   className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                 />
                 <button
                   onClick={sendChat}
                   disabled={chatting || !chatMessage.trim()}
+                  aria-label="Send chat message"
                   className="rounded-lg bg-primary/20 px-3 py-2 text-sm text-primary hover:bg-primary/30 disabled:opacity-50"
                 >
                   {chatting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
@@ -469,18 +574,21 @@ export default function OrganizePage() {
                           <div className="flex shrink-0 flex-col gap-1.5">
                             <button
                               onClick={() => acceptSuggestion(s)}
+                              aria-label={`Accept filing suggestion for ${s.taskTitle}`}
                               className="inline-flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
                             >
                               <Check className="h-3 w-3" /> Accept
                             </button>
                             <button
                               onClick={() => setExpandedFiling(expandedFiling === s.taskId ? null : s.taskId)}
+                              aria-label={`Change project for ${s.taskTitle}`}
                               className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
                             >
                               <ChevronDown className={cn('h-3 w-3 transition-transform', expandedFiling === s.taskId && 'rotate-180')} /> Change
                             </button>
                             <button
                               onClick={() => dismissSuggestion(s.taskId)}
+                              aria-label={`Skip filing suggestion for ${s.taskTitle}`}
                               className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground"
                             >
                               <X className="h-3 w-3" /> Skip

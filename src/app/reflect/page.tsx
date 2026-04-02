@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, Check, ArrowRight, Ban, Skull, Loader2, Sparkles, Calendar, TrendingUp, TrendingDown, Minus, AlertTriangle, Flame, FolderKanban, Brain, Target } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
 
 interface Task {
@@ -58,12 +59,21 @@ export default function ReflectPage() {
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(null);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [weeklyNotes, setWeeklyNotes] = useState('');
+  const [confirmKill, setConfirmKill] = useState<Task | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch('/api/todoist?action=daily-review');
-        if (res.ok) setData(await res.json());
+        if (res.ok) {
+          setData(await res.json());
+        } else {
+          // Auth or server error — show empty state gracefully
+          setData({ reviewDate: new Date().toISOString().split('T')[0], completed: [], planned: [], fires: 0, bumps: 0, completionRate: 0 });
+        }
+      } catch {
+        // Network error — show empty state
+        setData({ reviewDate: new Date().toISOString().split('T')[0], completed: [], planned: [], fires: 0, bumps: 0, completionRate: 0 });
       } finally {
         setLoading(false);
       }
@@ -211,17 +221,24 @@ export default function ReflectPage() {
                       {(['bump', 'block', 'kill'] as const).map(action => (
                         <button
                           key={action}
-                          onClick={() => setTaskActions(prev => ({ ...prev, [t.id]: action }))}
+                          onClick={() => {
+                            if (action === 'kill') {
+                              setConfirmKill(t);
+                            } else {
+                              setTaskActions(prev => ({ ...prev, [t.id]: action }));
+                            }
+                          }}
+                          aria-label={`${action === 'bump' ? 'Bump' : action === 'block' ? 'Block' : 'Kill'} task: ${t.title}`}
                           className={cn(
-                            'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
                             taskActions[t.id] === action
                               ? action === 'kill' ? 'bg-red-500/20 text-red-400' : 'bg-primary/20 text-primary'
                               : 'bg-secondary text-muted-foreground hover:bg-accent',
                           )}
                         >
-                          {action === 'bump' && '→ Bump to tomorrow'}
-                          {action === 'block' && '🚫 Blocked'}
-                          {action === 'kill' && '💀 Kill it'}
+                          {action === 'bump' && <><ArrowRight className="h-3 w-3" /> Bump to tomorrow</>}
+                          {action === 'block' && <><Ban className="h-3 w-3" /> Blocked</>}
+                          {action === 'kill' && <><Skull className="h-3 w-3" /> Kill it</>}
                         </button>
                       ))}
                       {(t.bumpCount || 0) >= 2 && (
@@ -290,29 +307,29 @@ export default function ReflectPage() {
           >
             Save & Close Day
           </button>
+
+          {/* Kill Confirmation */}
+          <ConfirmDialog
+            open={!!confirmKill}
+            onOpenChange={(open) => { if (!open) setConfirmKill(null); }}
+            title="Kill this task?"
+            description={`"${confirmKill?.title}" will be permanently removed. This cannot be undone.`}
+            confirmLabel="Kill It"
+            onConfirm={() => {
+              if (confirmKill) {
+                setTaskActions(prev => ({ ...prev, [confirmKill.id]: 'kill' }));
+                setConfirmKill(null);
+              }
+            }}
+          />
         </div>
       )}
 
       {tab === 'weekly' && (
         <div className="space-y-6">
-          {/* Generate button */}
+          {/* GTD Weekly Review Checklist */}
           {!weeklyReview && !weeklyLoading && (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 text-center">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary">
-                <Calendar className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <h3 className="text-sm font-semibold">Weekly Review</h3>
-              <p className="mt-1 mb-4 max-w-sm text-sm text-muted-foreground">
-                Analyze patterns from this week&apos;s daily reviews, task history, and project velocity.
-              </p>
-              <button
-                onClick={runWeeklyReview}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-              >
-                <Sparkles className="h-4 w-4" />
-                Run Weekly Review
-              </button>
-            </div>
+            <WeeklyReviewChecklist onRunReview={runWeeklyReview} />
           )}
 
           {/* Loading */}
@@ -520,6 +537,139 @@ export default function ReflectPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── GTD Weekly Review Checklist ─────────────────────────────
+
+const GTD_CHECKLIST = [
+  {
+    phase: 'Get Clear',
+    icon: '📥',
+    items: [
+      { id: 'collect-loose', label: 'Collect loose papers and materials' },
+      { id: 'empty-inbox', label: 'Process inbox to zero' },
+      { id: 'empty-head', label: 'Empty your head — capture any new open loops' },
+    ],
+  },
+  {
+    phase: 'Get Current',
+    icon: '📋',
+    items: [
+      { id: 'review-actions', label: 'Review next action lists — mark off completed, add new' },
+      { id: 'review-calendar-past', label: 'Review previous calendar — capture follow-ups' },
+      { id: 'review-calendar-future', label: 'Review upcoming calendar — prepare and capture actions' },
+      { id: 'review-waiting', label: 'Review waiting-for list — follow up as needed' },
+      { id: 'review-projects', label: 'Review project list — ensure each has a next action' },
+      { id: 'review-stuck', label: 'Review any stuck/stale projects — reactivate or move to Someday/Maybe' },
+    ],
+  },
+  {
+    phase: 'Get Creative',
+    icon: '💡',
+    items: [
+      { id: 'review-someday', label: 'Review Someday/Maybe list — activate or delete' },
+      { id: 'be-creative', label: 'Be creative and courageous — any new projects or goals?' },
+    ],
+  },
+] as const;
+
+function WeeklyReviewChecklist({ onRunReview }: { onRunReview: () => void }) {
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  const totalItems = GTD_CHECKLIST.reduce((sum, phase) => sum + phase.items.length, 0);
+  const progress = checked.size / totalItems;
+
+  const toggle = (id: string) => {
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold">GTD Weekly Review Checklist</h3>
+        <span className="text-xs text-muted-foreground">
+          {checked.size}/{totalItems} complete
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-2 overflow-hidden rounded-full bg-secondary">
+        <div
+          className={cn(
+            'h-full rounded-full transition-all duration-500',
+            progress === 1 ? 'bg-green-500' : 'bg-primary',
+          )}
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+
+      {GTD_CHECKLIST.map(phase => (
+        <div key={phase.phase} className="rounded-xl border border-border bg-card p-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {phase.icon} {phase.phase}
+          </h4>
+          <div className="space-y-2">
+            {phase.items.map(item => (
+              <label
+                key={item.id}
+                className={cn(
+                  'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-secondary/50',
+                  checked.has(item.id) && 'text-muted-foreground',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked.has(item.id)}
+                  onChange={() => toggle(item.id)}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                <span className={checked.has(item.id) ? 'line-through' : ''}>
+                  {item.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* AI Analysis trigger — only after completing checklist */}
+      <div className={cn(
+        'flex flex-col items-center rounded-xl border border-dashed py-6 text-center transition-all',
+        progress === 1 ? 'border-primary/50 bg-primary/5' : 'border-border',
+      )}>
+        {progress === 1 ? (
+          <>
+            <Check className="mb-2 h-6 w-6 text-green-400" />
+            <p className="mb-3 text-sm font-medium text-foreground">Checklist complete! Ready for AI analysis.</p>
+          </>
+        ) : (
+          <>
+            <Calendar className="mb-2 h-6 w-6 text-muted-foreground" />
+            <p className="mb-3 text-sm text-muted-foreground">
+              Complete the checklist above, then run AI analysis for patterns and insights.
+            </p>
+          </>
+        )}
+        <button
+          onClick={onRunReview}
+          disabled={progress < 1}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+        >
+          <Sparkles className="h-4 w-4" />
+          Run AI Weekly Analysis
+        </button>
+        {progress < 1 && (
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            Complete all {totalItems - checked.size} remaining items first
+          </p>
+        )}
+      </div>
     </div>
   );
 }

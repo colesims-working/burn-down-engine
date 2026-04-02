@@ -1,6 +1,6 @@
 import { db, schema } from '@/lib/db/client';
 import { todoist, TodoistTask, TodoistProject } from './client';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, ne, and, inArray } from 'drizzle-orm';
 
 // ─── Priority Mapping ────────────────────────────────────────
 
@@ -21,16 +21,21 @@ export function mapToTodoistPriority(ourPriority: number): number {
 export async function syncInbox(): Promise<schema.Task[]> {
   const todoistTasks = await todoist.getInboxTasks();
   const todoistInboxIds = new Set(todoistTasks.map(tt => tt.id));
-  const synced: schema.Task[] = [];
 
-  // Upsert tasks currently in Todoist inbox
-  for (const tt of todoistTasks) {
-    const existing = await db.query.tasks.findFirst({
-      where: eq(schema.tasks.todoistId, tt.id),
-    });
+  // Batch-fetch all existing local tasks that match incoming Todoist IDs (eliminates N queries)
+  const incomingIds = todoistTasks.map(tt => tt.id);
+  const existingTasks = incomingIds.length > 0
+    ? await db.query.tasks.findMany({
+        where: inArray(schema.tasks.todoistId, incomingIds),
+      })
+    : [];
+  const existingByTodoistId = new Map(existingTasks.map(t => [t.todoistId, t]));
+
+  // Upsert tasks currently in Todoist inbox — batch writes in parallel
+  const upsertPromises = todoistTasks.map(async (tt) => {
+    const existing = existingByTodoistId.get(tt.id);
 
     if (existing) {
-      // Update if Todoist is newer
       const updated = await db.update(schema.tasks)
         .set({
           title: tt.content,
@@ -39,15 +44,14 @@ export async function syncInbox(): Promise<schema.Task[]> {
           labels: JSON.stringify(tt.labels),
           isRecurring: tt.due?.is_recurring || false,
           recurrenceRule: tt.due?.string || null,
-          status: 'inbox', // Todoist says it's inbox → local must agree
+          status: 'inbox',
           todoistSyncedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })
         .where(eq(schema.tasks.id, existing.id))
         .returning();
-      synced.push(updated[0]);
+      return updated[0];
     } else {
-      // Create new local task
       const created = await db.insert(schema.tasks)
         .values({
           todoistId: tt.id,
@@ -63,27 +67,38 @@ export async function syncInbox(): Promise<schema.Task[]> {
           todoistSyncedAt: new Date().toISOString(),
         })
         .returning();
-      synced.push(created[0]);
+      return created[0];
     }
-  }
+  });
+  const synced = await Promise.all(upsertPromises);
 
   // Reconcile: local tasks marked 'inbox' that are no longer in Todoist inbox
-  // This means Todoist moved them (clarification push worked, or user moved manually)
   const localInbox = await db.query.tasks.findMany({
     where: eq(schema.tasks.status, 'inbox'),
   });
 
+  // Batch reconciliation — group by target status to minimize updates
+  const toClarified: string[] = [];
+  const toActive: string[] = [];
   for (const local of localInbox) {
     if (!local.todoistId) continue;
     if (todoistInboxIds.has(local.todoistId)) continue;
-
-    // Task was in our local inbox but is no longer in Todoist inbox.
-    // If it has enrichment (clarify confidence set), promote to clarified.
-    // Otherwise mark as active (user moved it manually in Todoist).
-    const newStatus = local.clarifyConfidence ? 'clarified' : 'active';
+    if (local.clarifyConfidence) {
+      toClarified.push(local.id);
+    } else {
+      toActive.push(local.id);
+    }
+  }
+  const now = new Date().toISOString();
+  if (toClarified.length > 0) {
     await db.update(schema.tasks)
-      .set({ status: newStatus, updatedAt: new Date().toISOString() })
-      .where(eq(schema.tasks.id, local.id));
+      .set({ status: 'clarified', updatedAt: now })
+      .where(inArray(schema.tasks.id, toClarified));
+  }
+  if (toActive.length > 0) {
+    await db.update(schema.tasks)
+      .set({ status: 'active', updatedAt: now })
+      .where(inArray(schema.tasks.id, toActive));
   }
 
   // Update sync state
@@ -316,4 +331,46 @@ export async function syncTaskLabels(localTask: schema.Task): Promise<void> {
 
 export async function addTodoistComment(todoistTaskId: string, content: string): Promise<void> {
   await todoist.addComment({ task_id: todoistTaskId, content });
+}
+
+// ─── Project Count Refresh ───────────────────────────────────
+
+/**
+ * Recalculates openActionCount and lastActivityAt for all projects
+ * based on actual task data. Fixes the "0 tasks / Stale" display issue.
+ */
+export async function refreshProjectCounts(): Promise<void> {
+  const allProjects = await db.query.projects.findMany();
+
+  for (const project of allProjects) {
+    // Count open (non-completed, non-killed) tasks in this project
+    const openTasks = await db.query.tasks.findMany({
+      where: and(
+        eq(schema.tasks.projectId, project.id),
+        ne(schema.tasks.status, 'completed'),
+        ne(schema.tasks.status, 'killed'),
+      ),
+    });
+
+    // Find most recent activity (any task update in this project)
+    const allProjectTasks = await db.query.tasks.findMany({
+      where: eq(schema.tasks.projectId, project.id),
+    });
+
+    let lastActivity: string | null = project.lastActivityAt;
+    for (const t of allProjectTasks) {
+      const taskDate = t.completedAt || t.updatedAt || t.createdAt;
+      if (taskDate && (!lastActivity || taskDate > lastActivity)) {
+        lastActivity = taskDate;
+      }
+    }
+
+    await db.update(schema.projects)
+      .set({
+        openActionCount: openTasks.length,
+        lastActivityAt: lastActivity,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(schema.projects.id, project.id));
+  }
 }

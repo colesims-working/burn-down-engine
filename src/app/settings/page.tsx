@@ -339,6 +339,62 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Preset buttons */}
+              <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                <div className="text-xs font-medium text-muted-foreground mb-2">Quick Presets</div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => {
+                      const geminiModels = modelsForProvider('gemini');
+                      const fast = geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
+                      if (fast) {
+                        const config: ModelConfig = {};
+                        for (const op of OPERATIONS) config[op] = { provider: 'gemini', model: fast.id };
+                        setModelConfig(config);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  >
+                    <Zap className="h-3 w-3 text-amber-400" /> Fast — All Gemini Flash
+                  </button>
+                  <button
+                    onClick={() => {
+                      const anthropicModels = modelsForProvider('anthropic');
+                      const smart = anthropicModels.find(m => m.id.includes('sonnet') || m.id.includes('opus')) || anthropicModels[0];
+                      if (smart) {
+                        const config: ModelConfig = {};
+                        for (const op of OPERATIONS) config[op] = { provider: 'anthropic', model: smart.id };
+                        setModelConfig(config);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  >
+                    <Cpu className="h-3 w-3 text-purple-400" /> Smart — All Claude
+                  </button>
+                  <button
+                    onClick={() => {
+                      const geminiModels = modelsForProvider('gemini');
+                      const anthropicModels = modelsForProvider('anthropic');
+                      const fast = geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
+                      const smart = anthropicModels.find(m => m.id.includes('sonnet') || m.id.includes('opus')) || anthropicModels[0];
+                      if (fast && smart) {
+                        const complexOps = ['clarify_task', 'complex_decomposition', 'weekly_review', 'project_audit', 'priority_recalibration'];
+                        const config: ModelConfig = {};
+                        for (const op of OPERATIONS) {
+                          config[op] = complexOps.includes(op)
+                            ? { provider: 'anthropic', model: smart.id }
+                            : { provider: 'gemini', model: fast.id };
+                        }
+                        setModelConfig(config);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  >
+                    <RefreshCw className="h-3 w-3 text-blue-400" /> Balanced — Claude for complex, Gemini for quick
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] text-muted-foreground">Presets change selections below. Click &quot;Save Model Settings&quot; to apply.</p>
+              </div>
               {/* Quick test all unique models */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-medium text-muted-foreground">Quick test:</span>
@@ -406,6 +462,7 @@ export default function SettingsPage() {
                       <select
                         value={assignment.provider}
                         onChange={(e) => handleProviderChange(op, e.target.value as Provider)}
+                        aria-label={`${info.label} provider`}
                         className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                       >
                         {providers.filter(p => p.available).map(p => (
@@ -417,6 +474,7 @@ export default function SettingsPage() {
                       <select
                         value={assignment.model}
                         onChange={(e) => handleModelChange(op, e.target.value)}
+                        aria-label={`${info.label} model`}
                         className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none truncate"
                       >
                         {availModels.length === 0 && (
@@ -452,6 +510,7 @@ export default function SettingsPage() {
                     step="0.05"
                     value={autoApproveThreshold}
                     onChange={(e) => setAutoApproveThreshold(parseFloat(e.target.value))}
+                    aria-label="Auto-approve confidence threshold"
                     className="flex-1"
                   />
                   <span className="text-sm font-mono w-12 text-right">{Math.round(autoApproveThreshold * 100)}%</span>

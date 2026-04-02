@@ -16,7 +16,8 @@
     "setup": "node scripts/setup.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "review": "tsx e2e/ai-review.ts"
+    "review": "tsx e2e/ai-review.ts",
+    "review:quick": "SMOKE_ONLY=1 tsx e2e/ai-review.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -41,6 +42,7 @@
     "drizzle-orm": "^0.38.0",
     "geist": "^1.0.0",
     "iron-session": "^8.0.0",
+    "langfuse": "^3.38.20",
     "lucide-react": "^0.462.0",
     "next": "^14.2.0",
     "openai": "^4.77.0",

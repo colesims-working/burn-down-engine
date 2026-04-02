@@ -14,7 +14,6 @@ export async function fullSync() {
 }
 
 export async function inboxSync() {
-  await syncProjects();
   const tasks = await syncInbox();
   revalidatePath('/inbox');
   return { synced: tasks.length };

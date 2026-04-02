@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db/client';
-import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist } from '@/lib/todoist/sync';
+import { eq, ne, and, sql } from 'drizzle-orm';
+import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist, refreshProjectCounts } from '@/lib/todoist/sync';
 import { todoist } from '@/lib/todoist/client';
 import { buildEngageList, completeTask, bumpTask, blockTask, waitTask, handleFire } from '@/lib/priority/engine';
 import { clarifyTask, applyClarification, answerClarifyQuestion } from '@/actions/clarify';
@@ -10,7 +11,6 @@ import { runProjectAudit, getFilingSuggestions, organizeConversation } from '@/a
 import { getKnowledgeEntries, getPeople, getKnowledgeStats, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry, createPerson, updatePerson, deletePerson } from '@/actions/knowledge';
 import { getAppSettings, updateAppSettings, getModelConfig, getDisabledModels } from '@/lib/db/settings';
 import { listAvailableModels, testModel } from '@/lib/llm/providers';
-import { eq, ne, and } from 'drizzle-orm';
 
 // ─── GET: Read operations ────────────────────────────────────
 
@@ -32,10 +32,8 @@ export async function GET(request: NextRequest) {
       }
 
       case 'inbox-count': {
-        const tasks = await db.query.tasks.findMany({
-          where: eq(schema.tasks.status, 'inbox'),
-        });
-        return NextResponse.json({ count: tasks.length });
+        const result = await db.select({ count: sql<number>`count(*)` }).from(schema.tasks).where(eq(schema.tasks.status, 'inbox'));
+        return NextResponse.json({ count: result[0].count });
       }
 
       case 'engage': {
@@ -44,6 +42,8 @@ export async function GET(request: NextRequest) {
       }
 
       case 'projects': {
+        // Refresh task counts before returning
+        await refreshProjectCounts();
         const status = request.nextUrl.searchParams.get('status');
         const projects = status
           ? await db.query.projects.findMany({ where: eq(schema.projects.status, status as any) })
@@ -122,14 +122,14 @@ export async function POST(request: NextRequest) {
     switch (action) {
       // ─── Sync ──────────────────────────
       case 'sync-inbox': {
-        await syncProjects();
         const tasks = await syncInbox();
-        return NextResponse.json({ synced: tasks.length });
+        return NextResponse.json({ synced: tasks.length, tasks });
       }
 
       case 'sync-all': {
         await syncProjects();
         const tasks = await syncAllTasks();
+        await refreshProjectCounts();
         return NextResponse.json({ synced: tasks.length });
       }
 
@@ -149,8 +149,17 @@ export async function POST(request: NextRequest) {
       }
 
       // ─── Clarify ───────────────────────
+      case 'delete': {
+        const taskToDelete = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        if (taskToDelete?.todoistId) {
+          try { await todoist.deleteTask(taskToDelete.todoistId); } catch {}
+        }
+        await db.delete(schema.tasks).where(eq(schema.tasks.id, body.taskId));
+        return NextResponse.json({ deleted: true });
+      }
+
       case 'clarify': {
-        const result = await clarifyTask(body.taskId);
+        const result = await clarifyTask(body.taskId, body.additionalInstructions);
         return NextResponse.json(result);
       }
 

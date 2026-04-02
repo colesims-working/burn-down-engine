@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, Plus, Pencil, Trash2, User, Search, BarChart3 } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
@@ -48,6 +49,7 @@ export default function KnowledgePage() {
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [showAddEntry, setShowAddEntry] = useState(false);
   const [showAddPerson, setShowAddPerson] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: 'entry' | 'person' } | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -79,6 +81,7 @@ export default function KnowledgePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-knowledge', id }),
     });
+    setDeleteConfirm(null);
     await fetchData();
   };
 
@@ -88,6 +91,7 @@ export default function KnowledgePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'delete-person', id }),
     });
+    setDeleteConfirm(null);
     await fetchData();
   };
 
@@ -109,7 +113,7 @@ export default function KnowledgePage() {
 
       {/* Stats Bar */}
       {stats && (
-        <div className="mb-6 grid grid-cols-4 gap-3">
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatCard label="Total Entries" value={stats.totalEntries} />
           <StatCard label="People" value={stats.totalPeople} />
           <StatCard label="Avg Confidence" value={`${Math.round(stats.avgConfidence * 100)}%`} />
@@ -168,10 +172,28 @@ export default function KnowledgePage() {
           {/* Entry list */}
           {loading ? (
             <div className="space-y-2">{[1, 2, 3].map(i => <div key={i} className="h-16 animate-pulse rounded-lg bg-card" />)}</div>
-          ) : filtered.length === 0 ? (
+          ) : entries.length === 0 ? (
             <EmptyState icon={Brain} title="No entries yet" description="Knowledge accumulates as you use the system, or add entries manually." />
+          ) : filtered.length === 0 ? (
+            <div className="py-12 text-center">
+              <Search className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm font-medium text-muted-foreground">No results for &ldquo;{search}&rdquo;</p>
+              <p className="mt-1 text-xs text-muted-foreground/60">Try a different search term or clear the filter</p>
+              <button
+                onClick={() => setSearch('')}
+                className="mt-3 rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                Clear Search
+              </button>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <>
+              {search && (
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Showing {filtered.length} of {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+                </p>
+              )}
+              <div className="space-y-2">
               {filtered.map(entry => (
                 <div key={entry.id} className="stagger-item rounded-lg border border-border bg-card p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -182,16 +204,23 @@ export default function KnowledgePage() {
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.value}</p>
                       <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground/60">
-                        {entry.confidence !== null && <span>Confidence: {Math.round(entry.confidence * 100)}%</span>}
+                      {entry.confidence !== null && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="inline-block h-1.5 w-12 rounded-full bg-secondary overflow-hidden">
+                            <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round(entry.confidence * 100)}%` }} />
+                          </span>
+                          {Math.round(entry.confidence * 100)}%
+                        </span>
+                      )}
                         {entry.source && <span>Source: {entry.source}</span>}
                         {(entry.timesReferenced || 0) > 0 && <span>Referenced: {entry.timesReferenced}x</span>}
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <button onClick={() => setEditingEntry(entry)} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+                      <button onClick={() => setEditingEntry(entry)} aria-label={`Edit ${entry.key} entry`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => deleteEntry(entry.id)} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                      <button onClick={() => setDeleteConfirm({ id: entry.id, name: entry.key, type: 'entry' })} aria-label={`Delete ${entry.key} entry`} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -199,6 +228,7 @@ export default function KnowledgePage() {
                 </div>
               ))}
             </div>
+            </>
           )}
         </>
       )}
@@ -206,7 +236,7 @@ export default function KnowledgePage() {
       {tab === 'people' && (
         <>
           {people.length === 0 ? (
-            <EmptyState icon={User} title="No people tracked" description="People are discovered during task clarification, or add them manually." />
+            <EmptyState icon={User} title="No people tracked" description="Add people manually, or they'll appear automatically when mentioned during task clarification." />
           ) : (
             <div className="space-y-2">
               {people.map(person => (
@@ -223,10 +253,10 @@ export default function KnowledgePage() {
                       {person.contextNotes && <p className="mt-1 text-xs text-muted-foreground/70">{person.contextNotes}</p>}
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <button onClick={() => setEditingPerson(person)} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+                      <button onClick={() => setEditingPerson(person)} aria-label={`Edit ${person.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button onClick={() => deletePerson(person.id)} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                      <button onClick={() => setDeleteConfirm({ id: person.id, name: person.name, type: 'person' })} aria-label={`Delete ${person.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -331,6 +361,16 @@ export default function KnowledgePage() {
           ]}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onOpenChange={(open) => !open && setDeleteConfirm(null)}
+        title={`Delete ${deleteConfirm?.type === 'person' ? 'person' : 'entry'}?`}
+        description={`"${deleteConfirm?.name}" will be permanently removed.`}
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        onConfirm={() => deleteConfirm?.type === 'person' ? deletePerson(deleteConfirm.id) : deleteEntry(deleteConfirm!.id)}
+      />
     </div>
   );
 }

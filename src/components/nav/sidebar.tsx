@@ -52,6 +52,9 @@ export function Sidebar() {
       } catch {}
     }
     fetchCount();
+    const onInboxChanged = () => fetchCount();
+    window.addEventListener('inbox-changed', onInboxChanged);
+    return () => window.removeEventListener('inbox-changed', onInboxChanged);
   }, [pathname]);
 
   const handleLogout = async () => {
@@ -82,13 +85,14 @@ export function Sidebar() {
 
       {/* Workflow arrow indicator */}
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-1 rounded-md bg-secondary/50 px-2.5 py-1.5">
+        <div className="flex items-center gap-1 rounded-md bg-secondary/50 px-2.5 py-1.5" role="navigation" aria-label="GTD workflow progress">
           {navItems.map((item, i) => {
             const isActive = pathname === item.href;
             const isPast = navItems.findIndex(n => n.href === pathname) > i;
             return (
               <div key={item.href} className="flex items-center">
                 <div
+                  title={`${item.label}${isActive ? ' (current)' : isPast ? ' (done)' : ''}`}
                   className={cn(
                     'h-1.5 w-1.5 rounded-full transition-colors',
                     isActive && 'bg-primary',

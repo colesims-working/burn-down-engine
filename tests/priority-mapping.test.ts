@@ -1,4 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/lib/db/client', () => ({
+  db: {},
+}));
+
 import { mapFromTodoistPriority, mapToTodoistPriority } from '@/lib/todoist/sync';
 
 describe('Priority Mapping', () => {

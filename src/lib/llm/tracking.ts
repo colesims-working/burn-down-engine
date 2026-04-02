@@ -1,5 +1,15 @@
 import { db, schema } from '@/lib/db/client';
 import { LLMOperation } from './router';
+import { Langfuse } from 'langfuse';
+
+// Langfuse client — only active when credentials are configured
+const langfuse = process.env.LANGFUSE_SECRET_KEY
+  ? new Langfuse({
+      secretKey: process.env.LANGFUSE_SECRET_KEY,
+      publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
+      baseUrl: process.env.LANGFUSE_BASE_URL || 'https://us.cloud.langfuse.com',
+    })
+  : null;
 
 export async function trackLLMInteraction(data: {
   operation: LLMOperation;
@@ -42,6 +52,33 @@ export async function trackLLMInteraction(data: {
       latencyMs,
       costEstimate: cost,
     });
+
+    // Send to Langfuse if configured
+    if (langfuse) {
+      const trace = langfuse.trace({
+        name: data.operation,
+        input: { prompt: data.input.slice(0, 10000) },
+        output: { completion: data.output.slice(0, 10000) },
+        metadata: { page: data.operation.split('_')[0] || 'core', model: data.model },
+      });
+      trace.generation({
+        name: data.operation,
+        model: data.model,
+        input: { prompt: data.input.slice(0, 10000) },
+        output: { completion: data.output.slice(0, 10000) },
+        startTime: new Date(data.startTime),
+        endTime: new Date(data.endTime),
+        usage: {
+          promptTokens: Math.ceil(inTokens),
+          completionTokens: Math.ceil(outTokens),
+          totalTokens: Math.ceil(inTokens + outTokens),
+        },
+        metadata: {
+          costUsd: cost,
+          latencyMs,
+        },
+      });
+    }
   } catch (error) {
     // Non-blocking error logging
     console.error('Failed to log LLM interaction:', error);

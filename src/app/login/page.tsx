@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { Flame } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Flame, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,13 +21,16 @@ export default function LoginPage() {
         body: JSON.stringify({ password }),
       });
 
-      if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
         window.location.href = '/inbox';
       } else {
-        setError('Invalid password');
+        setError(data.error || 'Invalid password');
+        passwordRef.current?.focus();
       }
     } catch {
-      setError('Connection error');
+      setError('Connection error. Please check your network and try again.');
+      passwordRef.current?.focus();
     } finally {
       setLoading(false);
     }
@@ -45,20 +49,32 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Login form">
           <div>
+            <label htmlFor="password" className="sr-only">Password</label>
             <input
+              ref={passwordRef}
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               autoFocus
-              className="w-full rounded-lg border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              aria-label="Login password"
+              aria-describedby={error ? 'login-error login-hint' : 'login-hint'}
+              aria-invalid={!!error}
+              className="w-full rounded-lg border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary"
             />
+            <p id="login-hint" className="mt-2 text-center text-xs text-muted-foreground">
+              Single-user app — enter your configured password
+            </p>
           </div>
 
           {error && (
-            <p className="text-center text-sm text-destructive">{error}</p>
+            <p id="login-error" className="flex items-center justify-center gap-1.5 text-sm text-destructive" role="alert">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </p>
           )}
 
           <button
@@ -66,7 +82,7 @@ export default function LoginPage() {
             disabled={loading || !password}
             className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {loading ? 'Authenticating...' : 'Enter'}
+            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin inline" />Signing in...</> : 'Sign In'}
           </button>
         </form>
       </div>

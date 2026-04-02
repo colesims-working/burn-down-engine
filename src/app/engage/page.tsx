@@ -1,10 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw, Filter } from 'lucide-react';
 import { PriorityBadge, EnergyBadge, TimeEstimate, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+
+const CONTEXTS = [
+  { value: 'all', label: 'All', icon: '📋' },
+  { value: '@computer', label: '@computer', icon: '💻' },
+  { value: '@calls', label: '@calls', icon: '📞' },
+  { value: '@office', label: '@office', icon: '🏢' },
+  { value: '@home', label: '@home', icon: '🏠' },
+  { value: '@errands', label: '@errands', icon: '🚗' },
+  { value: '@waiting', label: '@waiting', icon: '⏳' },
+] as const;
 
 interface Task {
   id: string;
@@ -41,28 +51,30 @@ export default function EngagePage() {
   const [antiPileUpTask, setAntiPileUpTask] = useState<Task | null>(null);
   const [antiPileUpChoice, setAntiPileUpChoice] = useState<'promote' | 'delegate' | 'kill' | 'schedule' | null>(null);
   const [antiPileUpDate, setAntiPileUpDate] = useState('');
+  const [contextFilter, setContextFilter] = useState<string>('all');
+  const [focusIndex, setFocusIndex] = useState(0);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/todoist?action=engage');
       if (res.ok) setData(await res.json());
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleComplete = async (taskId: string) => {
+  const handleComplete = useCallback(async (taskId: string) => {
     await fetch('/api/todoist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'complete', taskId }),
     });
     await fetchData();
-  };
+  }, [fetchData]);
 
-  const handleDefer = async (taskId: string) => {
+  const handleDefer = useCallback(async (taskId: string) => {
     const res = await fetch('/api/todoist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,7 +89,7 @@ export default function EngagePage() {
       }
     }
     await fetchData();
-  };
+  }, [fetchData]);
 
   const handleBlock = async (taskId: string) => {
     await fetch('/api/todoist', {
@@ -147,6 +159,65 @@ export default function EngagePage() {
     await fetchData();
   };
 
+  // Context filtering — safe to call even when data is null
+  const filterByContext = useCallback((tasks: Task[]) => {
+    if (contextFilter === 'all') return tasks;
+    return tasks.filter(t => {
+      const labels = t.labels?.toLowerCase() || '';
+      const notes = t.contextNotes?.toLowerCase() || '';
+      const ctx = contextFilter.toLowerCase();
+      return labels.includes(ctx) || notes.includes(ctx) || labels.includes(ctx.replace('@', ''));
+    });
+  }, [contextFilter]);
+
+  const allActive = data ? [...data.fires, ...data.mustDo, ...data.shouldDo] : [];
+  const filteredActive = filterByContext(allActive);
+  const nextTasks = filteredActive.slice(0, 10);
+
+  // Keyboard navigation — must be before early return to maintain hook order
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (nextTasks.length === 0) return;
+
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          setFocusIndex(prev => Math.min(prev + 1, nextTasks.length - 1));
+          break;
+        case 'k':
+          e.preventDefault();
+          setFocusIndex(prev => Math.max(prev - 1, 0));
+          break;
+        case 'c':
+          if (nextTasks[focusIndex]) {
+            e.preventDefault();
+            handleComplete(nextTasks[focusIndex].id);
+          }
+          break;
+        case 'd':
+          if (nextTasks[focusIndex]) {
+            e.preventDefault();
+            handleDefer(nextTasks[focusIndex].id);
+          }
+          break;
+        case 'b':
+          if (nextTasks[focusIndex]) {
+            e.preventDefault();
+            setBlockModal(nextTasks[focusIndex].id);
+          }
+          break;
+        case 'f':
+          e.preventDefault();
+          setFireModal(true);
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [nextTasks.length, focusIndex, handleComplete, handleDefer]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading || !data) {
     return (
       <div>
@@ -162,8 +233,7 @@ export default function EngagePage() {
   const completedCount = data.completed.length;
   const progress = totalPlanned > 0 ? completedCount / (completedCount + totalPlanned) : 0;
 
-  const allActive = [...data.fires, ...data.mustDo, ...data.shouldDo];
-  const nextTask = allActive[0];
+  const nextTask = nextTasks[0];
 
   return (
     <div>
@@ -176,7 +246,7 @@ export default function EngagePage() {
             className="inline-flex items-center gap-2 rounded-lg border border-destructive/50 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
           >
             <Flame className="h-4 w-4" />
-            Fire Incoming
+            Urgent Interrupt
           </button>
         }
       />
@@ -196,64 +266,119 @@ export default function EngagePage() {
         </span>
       </div>
 
-      {/* Next Up */}
-      {nextTask && (
-        <div className="mb-6 rounded-xl border-2 border-primary/30 bg-primary/5 p-5">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-primary">
-            ► Next Up
+      {/* Context Filter */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-muted-foreground" />
+        {CONTEXTS.map(ctx => (
+          <button
+            key={ctx.value}
+            onClick={() => { setContextFilter(ctx.value); setFocusIndex(0); }}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              contextFilter === ctx.value
+                ? 'bg-primary/20 text-primary'
+                : 'bg-secondary text-muted-foreground hover:bg-accent',
+            )}
+          >
+            <span>{ctx.icon}</span> {ctx.label}
+          </button>
+        ))}
+        {contextFilter !== 'all' && (
+          <span className="ml-2 text-xs text-muted-foreground">
+            {filteredActive.length} task{filteredActive.length !== 1 ? 's' : ''} in context
+          </span>
+        )}
+      </div>
+
+      {/* Next Up — Top 5 Tasks */}
+      {nextTasks.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+              ► Next Up ({nextTasks.length} of {filteredActive.length})
+            </span>
+            <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
+              j/k navigate · c complete · d defer · b block · f urgent
+            </span>
           </div>
-          <div className="mb-1 text-lg font-semibold">{nextTask.title}</div>
-          {nextTask.nextAction && (
-            <div className="mb-3 text-sm text-muted-foreground">{nextTask.nextAction}</div>
-          )}
-          <div className="mb-4 flex items-center gap-2">
-            <PriorityBadge priority={nextTask.priority || 4} size="md" />
-            <EnergyBadge level={nextTask.energyLevel} />
-            <TimeEstimate minutes={nextTask.timeEstimateMin} />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleComplete(nextTask.id)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-green-500/20 px-4 py-2 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/30"
+          {nextTasks.map((task, i) => (
+            <div
+              key={task.id}
+              className={cn(
+                'rounded-xl border-2 p-4 transition-all',
+                i === focusIndex
+                  ? 'border-primary/40 bg-primary/5'
+                  : 'border-border/50 bg-card',
+                i === 0 && focusIndex === 0 && 'ring-1 ring-primary/20',
+              )}
             >
-              <Check className="h-4 w-4" /> Complete
-            </button>
-            <button
-              onClick={() => handleDefer(nextTask.id)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
-            >
-              <ArrowRight className="h-4 w-4" /> Defer
-            </button>
-            <button
-              onClick={() => setBlockModal(nextTask.id)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
-            >
-              <Ban className="h-4 w-4" /> Blocked
-            </button>
-          </div>
+              <div className="flex items-start gap-3">
+                <PriorityBadge priority={task.priority || 4} size={i === 0 ? 'md' : 'sm'} />
+                <div className="flex-1 min-w-0">
+                  <div className={cn('text-sm font-semibold', i === 0 && 'text-base')}>{task.title}</div>
+                  {task.nextAction && (
+                    <div className="mt-0.5 text-xs text-muted-foreground">{task.nextAction}</div>
+                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <PriorityBadge priority={task.priority || 4} size={i === 0 ? 'md' : 'sm'} />
+                    <EnergyBadge level={task.energyLevel} />
+                    <TimeEstimate minutes={task.timeEstimateMin} />
+                    {task.labels && (
+                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        {task.labels}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => handleComplete(task.id)}
+                    aria-label={`Complete: ${task.title}`}
+                    className="rounded-lg bg-green-500/20 px-2.5 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDefer(task.id)}
+                    aria-label={`Defer: ${task.title}`}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setBlockModal(task.id)}
+                    aria-label={`Block: ${task.title}`}
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    <Ban className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Task Queue */}
       <div className="space-y-6">
         {/* Fires */}
-        {data.fires.length > 0 && (
-          <TaskSection title="🔥 Fires" tasks={data.fires} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterByContext(data.fires).length > 0 && (
+          <TaskSection title="🔥 Fires" tasks={filterByContext(data.fires)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* Must Do */}
-        {data.mustDo.length > 0 && (
-          <TaskSection title="🎯 Must Do" tasks={data.mustDo.slice(nextTask && data.fires.length === 0 ? 1 : 0)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterByContext(data.mustDo).length > 0 && (
+          <TaskSection title="🎯 Must Do" tasks={filterByContext(data.mustDo).slice(nextTask && filterByContext(data.fires).length === 0 ? 1 : 0)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* Should Do */}
-        {data.shouldDo.length > 0 && (
-          <TaskSection title="📋 Should Do" tasks={data.shouldDo} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterByContext(data.shouldDo).length > 0 && (
+          <TaskSection title="📋 Should Do" tasks={filterByContext(data.shouldDo)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* This Week */}
-        {data.thisWeek.length > 0 && (
-          <TaskSection title="📌 This Week" tasks={data.thisWeek} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
+        {filterByContext(data.thisWeek).length > 0 && (
+          <TaskSection title="📌 This Week" tasks={filterByContext(data.thisWeek)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
         )}
 
         {/* Waiting / Blocked */}
@@ -298,10 +423,10 @@ export default function EngagePage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Flame className="h-5 w-5 text-destructive" />
-              Fire Triage
+              Urgent Interrupt
             </DialogTitle>
             <DialogDescription>
-              What&apos;s the fire? The lowest P2 will be bumped to tomorrow.
+              Describe the urgent task. The lowest-priority P2 task will be deferred to tomorrow to make room.
             </DialogDescription>
           </DialogHeader>
           <textarea
@@ -478,14 +603,15 @@ function TaskSection({
             <div className="flex items-center gap-3">
               <button
                 onClick={() => onComplete(task.id)}
+                aria-label={`Complete task: ${task.title}`}
                 className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors hover:border-green-400 hover:text-green-400"
               >
                 <Check className="h-3 w-3" />
               </button>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{task.title}</div>
+                <div className="text-sm font-medium break-words">{task.title}</div>
                 {task.nextAction && expandedId !== task.id && (
-                  <div className="text-xs text-muted-foreground truncate">{task.nextAction}</div>
+                  <div className="text-xs text-muted-foreground break-words">{task.nextAction}</div>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">

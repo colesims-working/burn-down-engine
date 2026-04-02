@@ -8,7 +8,6 @@ import { eq, and } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 export async function syncInboxAction() {
-  await syncProjects();
   const tasks = await syncInbox();
   revalidatePath('/inbox');
   return tasks;

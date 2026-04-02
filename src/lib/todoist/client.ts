@@ -243,14 +243,20 @@ class TodoistClient {
 
   // ─── Helpers ────────────────────────────────────────────────
 
+  private cachedInboxId: string | null = null;
+
   async getInboxProject(): Promise<TodoistProject> {
     const projects = await this.getProjects();
     const inbox = projects.find(p => p.inbox_project);
     if (!inbox) throw new Error('Inbox project not found');
+    this.cachedInboxId = inbox.id;
     return inbox;
   }
 
   async getInboxTasks(): Promise<TodoistTask[]> {
+    if (this.cachedInboxId) {
+      return this.getTasks({ project_id: this.cachedInboxId });
+    }
     const inbox = await this.getInboxProject();
     return this.getTasks({ project_id: inbox.id });
   }

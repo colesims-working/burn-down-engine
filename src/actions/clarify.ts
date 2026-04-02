@@ -18,6 +18,7 @@ interface ClarifyResult {
   priority: number;
   priorityReasoning: string;
   labels: string[];
+  dueDate: string | null;
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
   contextNotes: string;
@@ -30,7 +31,7 @@ interface ClarifyResult {
   knowledgeExtracted: { category: string; key: string; value: string; confidence: number }[];
 }
 
-export async function clarifyTask(taskId: string): Promise<ClarifyResult> {
+export async function clarifyTask(taskId: string, additionalInstructions?: string): Promise<ClarifyResult> {
   const task = await db.query.tasks.findFirst({
     where: eq(schema.tasks.id, taskId),
   });
@@ -38,9 +39,13 @@ export async function clarifyTask(taskId: string): Promise<ClarifyResult> {
 
   const context = await buildContext(task.originalText, 'clarify');
 
+  const instructionSuffix = additionalInstructions
+    ? `\n\n## Additional User Instructions\n${additionalInstructions}`
+    : '';
+
   const result = await geminiGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
-    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"`,
+    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${instructionSuffix}`,
     operation: 'clarify_task',
   });
 
@@ -100,7 +105,8 @@ export async function applyClarification(
       nextAction: clarification.nextAction,
       projectId,
       priority: clarification.priority,
-      labels: JSON.stringify(clarification.labels),
+      labels: JSON.stringify(clarification.labels || []),
+      dueDate: clarification.dueDate || null,
       timeEstimateMin: clarification.timeEstimateMin,
       energyLevel: clarification.energyLevel,
       contextNotes: clarification.contextNotes,

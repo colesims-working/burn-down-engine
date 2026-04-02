@@ -17,7 +17,7 @@ export async function claudeGenerate(opts: {
   const startTime = Date.now();
   const message = await anthropic.messages.create({
     model: modelName,
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: opts.system,
     messages: [{ role: 'user', content: opts.prompt }],
   });
@@ -60,5 +60,27 @@ export async function claudeGenerateJSON<T>(opts: {
 
   // Strip any markdown fences if present
   const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  return JSON.parse(cleaned) as T;
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Attempt to repair truncated JSON by closing open structures
+    let repaired = cleaned;
+    // Close any unterminated string
+    const quotes = (repaired.match(/"/g) || []).length;
+    if (quotes % 2 !== 0) repaired += '"';
+    // Close open arrays and objects
+    const opens = (repaired.match(/[\[{]/g) || []).length;
+    const closes = (repaired.match(/[\]}]/g) || []).length;
+    for (let i = 0; i < opens - closes; i++) {
+      // Walk backwards to find the last opener and match it
+      const lastOpen = Math.max(repaired.lastIndexOf('['), repaired.lastIndexOf('{'));
+      const lastClose = Math.max(repaired.lastIndexOf(']'), repaired.lastIndexOf('}'));
+      if (lastOpen > lastClose) {
+        repaired += repaired[lastOpen] === '[' ? ']' : '}';
+      } else {
+        repaired += '}';
+      }
+    }
+    return JSON.parse(repaired) as T;
+  }
 }

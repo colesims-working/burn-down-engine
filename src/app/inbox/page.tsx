@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2 } from 'lucide-react';
+import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, AlertTriangle, Keyboard, Check, ArrowUpDown } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
 
 interface InboxTask {
@@ -41,31 +42,41 @@ export default function InboxPage() {
   // Auto-sync if stale (>5 min since last inbox sync)
   useEffect(() => {
     let cancelled = false;
-    async function syncIfStale() {
-      try {
-        const res = await fetch('/api/todoist?action=sync-state');
-        if (!res.ok) return;
-        const state = await res.json();
-        const lastSync = state?.lastInboxSync || state?.lastFullSync;
-        if (!lastSync || (Date.now() - new Date(lastSync).getTime()) > 5 * 60 * 1000) {
-          if (cancelled) return;
-          setSyncing(true);
-          await fetch('/api/todoist', {
+    async function loadAndSync() {
+      // Fetch local tasks and sync state in parallel
+      const [tasksRes, stateRes] = await Promise.all([
+        fetch('/api/todoist?action=inbox').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/todoist?action=sync-state').then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+
+      if (cancelled) return;
+      setTasks(tasksRes);
+      setLoading(false);
+
+      // Check if sync is needed
+      const lastSync = stateRes?.lastInboxSync || stateRes?.lastFullSync;
+      if (!lastSync || (Date.now() - new Date(lastSync).getTime()) > 5 * 60 * 1000) {
+        setSyncing(true);
+        try {
+          const syncRes = await fetch('/api/todoist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'sync-inbox' }),
           });
-        }
-      } catch (e) {
-        console.error('syncIfStale failed:', e);
-      } finally {
-        if (!cancelled) {
-          setSyncing(false);
-          fetchTasks();
+          if (syncRes.ok && !cancelled) {
+            const data = await syncRes.json();
+            // Use tasks returned from sync directly — skip extra fetch
+            if (data.tasks) {
+              setTasks(data.tasks);
+              window.dispatchEvent(new Event('inbox-changed'));
+            }
+          }
+        } catch {} finally {
+          if (!cancelled) setSyncing(false);
         }
       }
     }
-    syncIfStale();
+    loadAndSync();
     return () => { cancelled = true; };
   }, [fetchTasks]);
 
@@ -80,6 +91,7 @@ export default function InboxPage() {
       if (res.ok) await fetchTasks();
     } finally {
       setSyncing(false);
+      window.dispatchEvent(new Event('inbox-changed'));
     }
   };
 
@@ -96,6 +108,7 @@ export default function InboxPage() {
       if (res.ok) {
         setQuickAddText('');
         await fetchTasks();
+        window.dispatchEvent(new Event('inbox-changed'));
       }
     } catch (error) {
       console.error('Quick add failed:', error);
@@ -175,6 +188,62 @@ export default function InboxPage() {
     await fetchTasks();
   };
 
+  // Two-Minute Rule: complete a task directly from inbox without full GTD workflow
+  const quickComplete = async (taskId: string) => {
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setSelected(prev => { const next = new Set(prev); next.delete(taskId); return next; });
+    window.dispatchEvent(new Event('inbox-changed'));
+    try {
+      await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', taskId }),
+      });
+    } catch {
+      // Revert on failure — re-fetch
+      await fetchTasks();
+      window.dispatchEvent(new Event('inbox-changed'));
+    }
+  };
+
+  // Keyboard navigation
+  const [focusIdx, setFocusIdx] = useState(0);
+  const [sortNewestFirst, setSortNewestFirst] = useState(true);
+
+  const sortedTasks = [...tasks].sort((a, b) => {
+    const da = new Date(a.createdAt).getTime();
+    const db = new Date(b.createdAt).getTime();
+    return sortNewestFirst ? db - da : da - db;
+  });
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (tasks.length === 0) return;
+
+      switch (e.key) {
+        case 'j':
+          e.preventDefault();
+          setFocusIdx(prev => Math.min(prev + 1, sortedTasks.length - 1));
+          break;
+        case 'k':
+          e.preventDefault();
+          setFocusIdx(prev => Math.max(prev - 1, 0));
+          break;
+        case ' ':
+          e.preventDefault();
+          toggleSelect(sortedTasks[focusIdx]?.id);
+          break;
+        case 'a':
+          e.preventDefault();
+          selectAll();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [tasks, focusIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div>
       <PageHeader
@@ -199,7 +268,8 @@ export default function InboxPage() {
             type="text"
             value={quickAddText}
             onChange={(e) => setQuickAddText(e.target.value)}
-            placeholder="Quick capture..."
+            placeholder="Quick capture... (Ctrl+Enter to add)"
+            autoFocus
             className="flex-1 rounded-lg border border-border bg-card px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
           />
           <button
@@ -223,6 +293,25 @@ export default function InboxPage() {
           {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
       </div>
+
+      {/* Inbox Processing Banner */}
+      {!loading && tasks.length > 20 && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4" role="status">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
+          <div>
+            <div className="text-sm font-semibold text-amber-400">
+              {tasks.length} items need processing
+            </div>
+            <p className="mt-1 text-xs text-amber-400/80">
+              {tasks.length > 100
+                ? 'Large inbox — select a batch and send to Clarify to keep your system trusted.'
+                : tasks.length > 50
+                ? 'Growing inbox — try processing 20-30 items today to stay on top of things.'
+                : 'Select items and move to Clarify to turn captures into clear next actions.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Voice Processing Results */}
       {voiceProcessing && (
@@ -279,12 +368,31 @@ export default function InboxPage() {
         <>
           {/* Bulk actions */}
           <div className="mb-3 flex items-center justify-between">
-            <button
-              onClick={selectAll}
-              className="text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              {selected.size === tasks.length ? 'Deselect all' : `Select all (${tasks.length})`}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={selectAll}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground"
+                aria-label={selected.size === tasks.length ? 'Deselect all tasks' : `Select all ${tasks.length} tasks`}
+              >
+                {selected.size === tasks.length ? 'Deselect all' : `Select all (${tasks.length})`}
+              </button>
+              {selected.size > 0 && (
+                <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {selected.size} selected
+                </span>
+              )}
+              <button
+                onClick={() => setSortNewestFirst(prev => !prev)}
+                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground sm:text-xs"
+                aria-label={`Sort by ${sortNewestFirst ? 'oldest first' : 'newest first'}`}
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {sortNewestFirst ? 'Newest first' : 'Oldest first'}
+              </button>
+              <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
+                j/k navigate · space select · a select all
+              </span>
+            </div>
             {selected.size > 0 && (
               <a
                 href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
@@ -298,28 +406,38 @@ export default function InboxPage() {
           </div>
 
           {/* Task items */}
-          <div className="space-y-1">
-            {tasks.map((task, i) => (
-              <div
+          <ul role="list" aria-label="Inbox tasks" className="space-y-1">
+            {sortedTasks.map((task, i) => (
+              <li
                 key={task.id}
                 className={cn(
                   'stagger-item task-card group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3',
                   selected.has(task.id) && 'border-primary/30 bg-primary/5',
+                  i === focusIdx && 'ring-1 ring-primary/40',
                 )}
               >
                 <input
                   type="checkbox"
                   checked={selected.has(task.id)}
                   onChange={() => toggleSelect(task.id)}
-                  className="h-4 w-4 rounded border-border accent-primary"
+                  aria-label={`Select task: ${task.title}`}
+                  className="h-4 w-4 min-w-[16px] rounded border-border accent-primary"
                 />
-                <span className="flex-1 text-sm">{task.title}</span>
-                <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="flex-1 text-sm break-words">{task.title}</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); quickComplete(task.id); }}
+                  aria-label={`Quick done: ${task.title}`}
+                  title="Two-Minute Rule: done!"
+                  className="shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-green-500/20 hover:text-green-400 group-hover:opacity-100"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 shrink-0">
                   {new Date(task.createdAt).toLocaleDateString()}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
 
           {/* Process All */}
           <div className="mt-6 flex justify-center">
