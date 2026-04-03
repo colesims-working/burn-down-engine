@@ -311,19 +311,19 @@ export default function SettingsPage() {
 
         {/* Sync */}
         <Section icon={RefreshCw} title="Todoist Sync" description="Pull tasks and projects from Todoist">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-muted-foreground">
               {syncState?.lastFullSync
                 ? `Last full sync: ${new Date(syncState.lastFullSync).toLocaleString()}`
                 : 'Never synced'}
               {syncState?.lastInboxSync && (
-                <span className="ml-3">Inbox: {new Date(syncState.lastInboxSync).toLocaleString()}</span>
+                <div className="mt-0.5 sm:mt-0 sm:ml-3 sm:inline">Inbox: {new Date(syncState.lastInboxSync).toLocaleString()}</div>
               )}
             </div>
             <button
               onClick={handleFullSync}
               disabled={syncing}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:py-2"
             >
               <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
               {syncing ? 'Syncing...' : 'Full Sync'}
@@ -451,47 +451,58 @@ export default function SettingsPage() {
                   const test = modelTests[testKey];
 
                   return (
-                    <div key={op} className="grid grid-cols-[1fr_140px_1fr_36px] gap-2 items-center rounded-lg bg-secondary/50 px-3 py-2">
+                    <div key={op} className="rounded-lg bg-secondary/50 px-3 py-3 sm:py-2">
                       {/* Operation label */}
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{info.label}</div>
+                      <div className="mb-2 min-w-0 sm:mb-0 sm:float-none">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium truncate">{info.label}</div>
+                          <div className="flex justify-center sm:hidden">
+                            {test?.status === 'ok' && <CheckCircle className="h-4 w-4 text-green-400" />}
+                            {test?.status === 'fail' && (
+                              <span title={test.error}><XCircle className="h-4 w-4 text-destructive" /></span>
+                            )}
+                            {test?.status === 'testing' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                          </div>
+                        </div>
                         <div className="text-[11px] text-muted-foreground truncate">{info.description}</div>
                       </div>
 
-                      {/* Provider dropdown */}
-                      <select
-                        value={assignment.provider}
-                        onChange={(e) => handleProviderChange(op, e.target.value as Provider)}
-                        aria-label={`${info.label} provider`}
-                        className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
-                      >
-                        {providers.filter(p => p.available).map(p => (
-                          <option key={p.provider} value={p.provider}>{p.label}</option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        {/* Provider dropdown */}
+                        <select
+                          value={assignment.provider}
+                          onChange={(e) => handleProviderChange(op, e.target.value as Provider)}
+                          aria-label={`${info.label} provider`}
+                          className="w-full rounded-md border border-border bg-background px-2 py-2.5 text-xs text-foreground focus:border-primary focus:outline-none sm:w-[140px] sm:py-1.5"
+                        >
+                          {providers.filter(p => p.available).map(p => (
+                            <option key={p.provider} value={p.provider}>{p.label}</option>
+                          ))}
+                        </select>
 
-                      {/* Model dropdown */}
-                      <select
-                        value={assignment.model}
-                        onChange={(e) => handleModelChange(op, e.target.value)}
-                        aria-label={`${info.label} model`}
-                        className="rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none truncate"
-                      >
-                        {availModels.length === 0 && (
-                          <option value="">No models loaded</option>
-                        )}
-                        {availModels.map(m => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
+                        {/* Model dropdown */}
+                        <select
+                          value={assignment.model}
+                          onChange={(e) => handleModelChange(op, e.target.value)}
+                          aria-label={`${info.label} model`}
+                          className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-2.5 text-xs text-foreground focus:border-primary focus:outline-none sm:py-1.5"
+                        >
+                          {availModels.length === 0 && (
+                            <option value="">No models loaded</option>
+                          )}
+                          {availModels.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
 
-                      {/* Status indicator */}
-                      <div className="flex justify-center">
-                        {test?.status === 'ok' && <CheckCircle className="h-4 w-4 text-green-400" />}
-                        {test?.status === 'fail' && (
-                          <span title={test.error}><XCircle className="h-4 w-4 text-destructive" /></span>
-                        )}
-                        {test?.status === 'testing' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        {/* Status indicator — desktop */}
+                        <div className="hidden w-9 justify-center sm:flex">
+                          {test?.status === 'ok' && <CheckCircle className="h-4 w-4 text-green-400" />}
+                          {test?.status === 'fail' && (
+                            <span title={test.error}><XCircle className="h-4 w-4 text-destructive" /></span>
+                          )}
+                          {test?.status === 'testing' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                        </div>
                       </div>
                     </div>
                   );

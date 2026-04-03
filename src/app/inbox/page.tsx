@@ -268,14 +268,14 @@ export default function InboxPage() {
             type="text"
             value={quickAddText}
             onChange={(e) => setQuickAddText(e.target.value)}
-            placeholder="Quick capture... (Ctrl+Enter to add)"
+            placeholder="Quick capture..."
             autoFocus
-            className="flex-1 rounded-lg border border-border bg-card px-4 py-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 rounded-lg border border-border bg-card px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:px-4"
           />
           <button
             type="submit"
             disabled={!quickAddText.trim()}
-            className="rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -284,7 +284,7 @@ export default function InboxPage() {
         <button
           onClick={recording ? stopRecording : startRecording}
           className={cn(
-            'rounded-lg px-4 py-2.5 text-sm font-medium transition-all',
+            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-all',
             recording
               ? 'bg-destructive text-destructive-foreground recording-indicator'
               : 'border border-border text-muted-foreground hover:bg-accent hover:text-foreground',
@@ -367,36 +367,48 @@ export default function InboxPage() {
       ) : (
         <>
           {/* Bulk actions */}
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={selectAll}
-                className="text-xs font-medium text-muted-foreground hover:text-foreground"
-                aria-label={selected.size === tasks.length ? 'Deselect all tasks' : `Select all ${tasks.length} tasks`}
-              >
-                {selected.size === tasks.length ? 'Deselect all' : `Select all (${tasks.length})`}
-              </button>
-              {selected.size > 0 && (
-                <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
-                  {selected.size} selected
+          <div className="mb-3 space-y-2 sm:space-y-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={selectAll}
+                  className="min-h-[44px] text-xs font-medium text-muted-foreground hover:text-foreground sm:min-h-0"
+                  aria-label={selected.size === tasks.length ? 'Deselect all tasks' : `Select all ${tasks.length} tasks`}
+                >
+                  {selected.size === tasks.length ? 'Deselect all' : `Select all (${tasks.length})`}
+                </button>
+                {selected.size > 0 && (
+                  <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">
+                    {selected.size} selected
+                  </span>
+                )}
+                <button
+                  onClick={() => setSortNewestFirst(prev => !prev)}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground sm:text-xs"
+                  aria-label={`Sort by ${sortNewestFirst ? 'oldest first' : 'newest first'}`}
+                >
+                  <ArrowUpDown className="h-3 w-3" />
+                  {sortNewestFirst ? 'Newest' : 'Oldest'}
+                </button>
+                <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
+                  j/k navigate · space select · a select all
                 </span>
+              </div>
+              {selected.size > 0 && (
+                <a
+                  href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
+                  className="hidden items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:inline-flex"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Clarify Selected ({selected.size})
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </a>
               )}
-              <button
-                onClick={() => setSortNewestFirst(prev => !prev)}
-                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground sm:text-xs"
-                aria-label={`Sort by ${sortNewestFirst ? 'oldest first' : 'newest first'}`}
-              >
-                <ArrowUpDown className="h-3 w-3" />
-                {sortNewestFirst ? 'Newest first' : 'Oldest first'}
-              </button>
-              <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
-                j/k navigate · space select · a select all
-              </span>
             </div>
             {selected.size > 0 && (
               <a
                 href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:hidden"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Clarify Selected ({selected.size})
@@ -411,7 +423,7 @@ export default function InboxPage() {
               <li
                 key={task.id}
                 className={cn(
-                  'stagger-item task-card group flex items-center gap-3 rounded-lg border border-transparent px-3 py-3',
+                  'stagger-item task-card group flex min-h-[48px] items-center gap-3 rounded-lg border border-transparent px-3 py-3',
                   selected.has(task.id) && 'border-primary/30 bg-primary/5',
                   i === focusIdx && 'ring-1 ring-primary/40',
                 )}
@@ -421,18 +433,18 @@ export default function InboxPage() {
                   checked={selected.has(task.id)}
                   onChange={() => toggleSelect(task.id)}
                   aria-label={`Select task: ${task.title}`}
-                  className="h-4 w-4 min-w-[16px] rounded border-border accent-primary"
+                  className="h-5 w-5 min-w-[20px] rounded border-border accent-primary"
                 />
                 <span className="flex-1 text-sm break-words">{task.title}</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); quickComplete(task.id); }}
                   aria-label={`Quick done: ${task.title}`}
                   title="Two-Minute Rule: done!"
-                  className="shrink-0 rounded p-1 text-muted-foreground/40 opacity-0 transition-opacity hover:bg-green-500/20 hover:text-green-400 group-hover:opacity-100"
+                  className="touch-show flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground/40 opacity-0 transition-opacity hover:bg-green-500/20 hover:text-green-400 group-hover:opacity-100 sm:h-9 sm:w-9"
                 >
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="h-4 w-4" />
                 </button>
-                <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 shrink-0">
+                <span className="hidden shrink-0 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 sm:inline">
                   {new Date(task.createdAt).toLocaleDateString()}
                 </span>
               </li>
@@ -443,7 +455,7 @@ export default function InboxPage() {
           <div className="mt-6 flex justify-center">
             <a
               href={selected.size > 0 ? `/clarify?taskIds=${Array.from(selected).join(',')}` : '/clarify'}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto sm:py-2.5"
             >
               <Sparkles className="h-4 w-4" />
               {selected.size > 0 ? `Process Selected (${selected.size})` : 'Process All'} → Clarify

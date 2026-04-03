@@ -108,3 +108,15 @@
 .recording-indicator {
   animation: recording-pulse 1.5s ease-in-out infinite;
 }
+
+/* Mobile: make hover-revealed actions always visible on touch devices */
+@media (hover: none) {
+  .touch-show {
+    opacity: 1 !important;
+  }
+}
+
+/* Mobile touch target minimum */
+.touch-target {
+  @apply min-h-[44px] min-w-[44px];
+}

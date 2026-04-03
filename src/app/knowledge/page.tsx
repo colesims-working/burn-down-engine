@@ -148,20 +148,20 @@ export default function KnowledgePage() {
       {tab === 'entries' && (
         <>
           {/* Filters */}
-          <div className="mb-4 flex gap-2">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search knowledge..."
-                className="w-full rounded-lg border border-border bg-card py-2 pl-10 pr-4 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                className="w-full rounded-lg border border-border bg-card py-2.5 pl-10 pr-4 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none sm:py-2"
               />
             </div>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+              className="rounded-lg border border-border bg-card px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none sm:py-2"
             >
               {CATEGORIES.map(c => (
                 <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>
@@ -217,11 +217,11 @@ export default function KnowledgePage() {
                       </div>
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <button onClick={() => setEditingEntry(entry)} aria-label={`Edit ${entry.key} entry`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
-                        <Pencil className="h-3.5 w-3.5" />
+                      <button onClick={() => setEditingEntry(entry)} aria-label={`Edit ${entry.key} entry`} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground sm:h-auto sm:w-auto sm:rounded sm:p-1.5">
+                        <Pencil className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                       </button>
-                      <button onClick={() => setDeleteConfirm({ id: entry.id, name: entry.key, type: 'entry' })} aria-label={`Delete ${entry.key} entry`} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <button onClick={() => setDeleteConfirm({ id: entry.id, name: entry.key, type: 'entry' })} aria-label={`Delete ${entry.key} entry`} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-auto sm:w-auto sm:rounded sm:p-1.5">
+                        <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                       </button>
                     </div>
                   </div>
@@ -253,11 +253,11 @@ export default function KnowledgePage() {
                       {person.contextNotes && <p className="mt-1 text-xs text-muted-foreground/70">{person.contextNotes}</p>}
                     </div>
                     <div className="flex shrink-0 gap-1">
-                      <button onClick={() => setEditingPerson(person)} aria-label={`Edit ${person.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
-                        <Pencil className="h-3.5 w-3.5" />
+                      <button onClick={() => setEditingPerson(person)} aria-label={`Edit ${person.name}`} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground sm:h-auto sm:w-auto sm:rounded sm:p-1.5">
+                        <Pencil className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                       </button>
-                      <button onClick={() => setDeleteConfirm({ id: person.id, name: person.name, type: 'person' })} aria-label={`Delete ${person.name}`} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <button onClick={() => setDeleteConfirm({ id: person.id, name: person.name, type: 'person' })} aria-label={`Delete ${person.name}`} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-auto sm:w-auto sm:rounded sm:p-1.5">
+                        <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                       </button>
                     </div>
                   </div>

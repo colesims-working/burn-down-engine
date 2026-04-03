@@ -127,6 +127,7 @@ export async function syncProjects(): Promise<schema.Project[]> {
       const updated = await db.update(schema.projects)
         .set({
           name: tp.name,
+          parentTodoistId: tp.parent_id,
           todoistSyncedAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })
@@ -138,6 +139,7 @@ export async function syncProjects(): Promise<schema.Project[]> {
         .values({
           todoistId: tp.id,
           name: tp.name,
+          parentTodoistId: tp.parent_id,
           status: 'active',
           todoistSyncedAt: new Date().toISOString(),
         })

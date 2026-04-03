@@ -812,7 +812,7 @@ export default function ClarifyPage() {
                   j/k navigate · a approve · e edit · x reject · d done · Ctrl+Enter process
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-xs text-muted-foreground">
+              <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-3 sm:gap-3">
                 <div className="flex items-start gap-2">
                   <span className="mt-0.5 font-bold text-primary">1.</span>
                   <span><strong>What is it?</strong> Identify the actual commitment or reference.</span>
@@ -877,28 +877,30 @@ export default function ClarifyPage() {
               </div>
               <div className="space-y-2">
                 {tasks.map((task, i) => task.status === 'done' && task.splitInto && (
-                  <div key={task.id} className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
-                    <div className="flex items-center gap-3">
-                      <GitBranch className="h-4 w-4 text-amber-400" />
-                      <div className="flex-1">
+                  <div key={task.id} className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 sm:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                      <div className="flex items-center gap-2 sm:flex-1">
+                        <GitBranch className="h-4 w-4 shrink-0 text-amber-400" />
                         <span className="text-sm text-muted-foreground">
                           <span className="font-medium text-foreground">{task.originalText}</span>
                           {' → split into '}<span className="font-semibold text-amber-400">{task.splitInto} tasks</span>
                         </span>
                       </div>
-                      <button
-                        onClick={() => confirmSplit(i)}
-                        className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
-                      >
-                        <Check className="mr-1 inline h-3 w-3" /> Looks good
-                      </button>
-                      <button
-                        onClick={() => keepOriginal(i)}
-                        className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
-                        title="Discard split children and keep as a single task"
-                      >
-                        Keep as One
-                      </button>
+                      <div className="flex gap-2 sm:shrink-0">
+                        <button
+                          onClick={() => confirmSplit(i)}
+                          className="flex-1 rounded-lg bg-green-500/20 px-3 py-2.5 text-xs font-medium text-green-400 hover:bg-green-500/30 sm:flex-initial sm:py-1.5"
+                        >
+                          <Check className="mr-1 inline h-3 w-3" /> Looks good
+                        </button>
+                        <button
+                          onClick={() => keepOriginal(i)}
+                          className="flex-1 rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:flex-initial sm:py-1.5"
+                          title="Discard split children and keep as a single task"
+                        >
+                          Keep as One
+                        </button>
+                      </div>
                     </div>
                     <ul className="mt-2 space-y-1 pl-8">
                       {tasks.filter(t => t.splitFromId === task.id).map(child => (
@@ -980,10 +982,10 @@ export default function ClarifyPage() {
                     {task.status === 'completed' && (
                       <button
                         onClick={() => undoComplete(i)}
-                        className="rounded p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-amber-500/20 hover:text-amber-400 group-hover:opacity-100"
+                        className="touch-show flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground/60 opacity-0 transition-opacity hover:bg-amber-500/20 hover:text-amber-400 group-hover:opacity-100 sm:h-auto sm:w-auto sm:rounded sm:p-1"
                         title="Undo complete"
                       >
-                        <Undo2 className="h-3 w-3" />
+                        <Undo2 className="h-4 w-4 sm:h-3 sm:w-3" />
                       </button>
                     )}
                   </div>
@@ -1167,14 +1169,14 @@ function QuestionCard({
           Send
         </button>
       </div>
-      <div className="mt-2 flex gap-2">
-        <button onClick={onEdit} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button onClick={onEdit} className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1">
           <Pencil className="mr-1 inline h-3 w-3" /> Edit & Approve
         </button>
-        <button onClick={onComplete} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+        <button onClick={onComplete} className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1">
           <CheckCircle2 className="mr-1 inline h-3 w-3" /> Already Done
         </button>
-        <button onClick={onReject} className="rounded-lg border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent">
+        <button onClick={onReject} className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1">
           <X className="mr-1 inline h-3 w-3" /> Reject
         </button>
       </div>
@@ -1259,21 +1261,21 @@ function ProcessedCard({
   // Collapsed approved card
   if (isApproved && !expanded) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-green-500/20 bg-green-500/5 px-4 py-2.5 opacity-70">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-green-500/20 bg-green-500/5 px-3 py-2.5 opacity-70 sm:flex-nowrap sm:gap-3 sm:px-4">
         <Check className="h-4 w-4 text-green-400 shrink-0" />
-        <span className="text-sm text-muted-foreground line-through flex-1">{task.originalText}</span>
-        <span className="text-xs text-green-400">→ {r.title}</span>
+        <span className="text-sm text-muted-foreground line-through flex-1 min-w-0 truncate">{task.originalText}</span>
+        <span className="hidden text-xs text-green-400 sm:inline">→ {r.title}</span>
         <span className={cn(
           'rounded px-1.5 py-0.5 text-[10px] font-medium',
           r.confidence >= 0.8 ? 'bg-green-500/20 text-green-400' : r.confidence >= 0.6 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400',
         )}>
           {Math.round(r.confidence * 100)}%
         </span>
-        <button onClick={onToggle} className="text-xs text-muted-foreground hover:text-foreground">
-          <ChevronDown className="h-3 w-3" />
+        <button onClick={onToggle} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground sm:h-auto sm:w-auto sm:p-0">
+          <ChevronDown className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
         </button>
-        <button onClick={onUnapprove} className="text-xs text-muted-foreground hover:text-foreground" title="Undo approval">
-          <Undo2 className="h-3 w-3" />
+        <button onClick={onUnapprove} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground sm:h-auto sm:w-auto sm:p-0" title="Undo approval">
+          <Undo2 className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
         </button>
       </div>
     );
@@ -1281,7 +1283,7 @@ function ProcessedCard({
 
   return (
     <div className={cn(
-      'rounded-xl border p-4 transition-all',
+      'rounded-xl border p-3 transition-all sm:p-4',
       isApproved
         ? 'border-green-500/20 bg-green-500/5'
         : focused
@@ -1289,14 +1291,14 @@ function ProcessedCard({
         : 'border-border bg-card',
     )}>
       {/* Header */}
-      <div className="flex items-start gap-3">
+      <div className="space-y-2">
         <div className="flex-1 min-w-0">
           <div className="mb-1 text-xs text-muted-foreground line-through">{task.originalText}</div>
           {isEditing ? (
             <input
               value={draft?.title ?? r.title}
               onChange={(e) => onUpdateDraft('title', e.target.value)}
-              className="w-full rounded border border-primary/50 bg-card px-2 py-1 text-sm font-medium focus:outline-none focus:border-primary"
+              className="w-full rounded border border-primary/50 bg-card px-2 py-1.5 text-sm font-medium focus:outline-none focus:border-primary"
             />
           ) : (
             <div className="font-medium">{r.title}</div>
@@ -1305,18 +1307,18 @@ function ProcessedCard({
             <input
               value={draft?.nextAction ?? r.nextAction}
               onChange={(e) => onUpdateDraft('nextAction', e.target.value)}
-              className="mt-1 w-full rounded border border-primary/50 bg-card px-2 py-1 text-sm text-muted-foreground focus:outline-none focus:border-primary"
+              className="mt-1 w-full rounded border border-primary/50 bg-card px-2 py-1.5 text-sm text-muted-foreground focus:outline-none focus:border-primary"
             />
           ) : (
             <div className="mt-1 text-sm text-muted-foreground">{r.nextAction}</div>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isEditing ? (
             <select
               value={draft?.priority ?? r.priority}
               onChange={(e) => onUpdateDraft('priority', Number(e.target.value))}
-              className="rounded border border-primary/50 bg-card px-1.5 py-0.5 text-xs focus:outline-none"
+              className="rounded border border-primary/50 bg-card px-1.5 py-1 text-xs focus:outline-none"
             >
               <option value={1}>P1</option>
               <option value={2}>P2</option>
@@ -1375,7 +1377,7 @@ function ProcessedCard({
           {/* AI Before/After Comparison */}
           <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
             <div className="mb-2 text-xs font-semibold text-primary/80">🤖 What AI Changed</div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 sm:gap-3">
               <div>
                 <div className="mb-1 font-medium text-muted-foreground">Before (raw capture)</div>
                 <div className="rounded bg-secondary/80 p-2 italic text-muted-foreground">{task.originalText}</div>
@@ -1546,13 +1548,13 @@ function ProcessedCard({
           <>
             <button
               onClick={onSaveEdits}
-              className="rounded-lg bg-primary/20 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/30"
+              className="rounded-lg bg-primary/20 px-3 py-2.5 text-xs font-medium text-primary hover:bg-primary/30 sm:py-1.5"
             >
               <Check className="mr-1 inline h-3 w-3" /> Save & Approve
             </button>
             <button
               onClick={onCancelEditing}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+              className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1.5"
             >
               Cancel
             </button>
@@ -1562,7 +1564,7 @@ function ProcessedCard({
             {!isApproved && (
               <button
                 onClick={onApprove}
-                className="rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
+                className="rounded-lg bg-green-500/20 px-3 py-2.5 text-xs font-medium text-green-400 hover:bg-green-500/30 sm:py-1.5"
               >
                 <Check className="mr-1 inline h-3 w-3" /> Approve
               </button>
@@ -1570,7 +1572,7 @@ function ProcessedCard({
             {isApproved && (
               <button
                 onClick={onUnapprove}
-                className="rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/30"
+                className="rounded-lg bg-amber-500/20 px-3 py-2.5 text-xs font-medium text-amber-400 hover:bg-amber-500/30 sm:py-1.5"
               >
                 <Undo2 className="mr-1 inline h-3 w-3" /> Undo
               </button>
@@ -1578,7 +1580,7 @@ function ProcessedCard({
             {!isApproved && (
               <button
                 onClick={onEdit}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+                className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1.5"
               >
                 <Pencil className="mr-1 inline h-3 w-3" /> Edit
               </button>
@@ -1586,15 +1588,15 @@ function ProcessedCard({
             {!isApproved && (
               <button
                 onClick={() => setReinstructMode(true)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+                className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1.5"
               >
-                <MessageSquare className="mr-1 inline h-3 w-3" /> Re-instruct AI
+                <MessageSquare className="mr-1 inline h-3 w-3" /> Re-instruct
               </button>
             )}
             {!isApproved && (
               <button
                 onClick={() => setSplitMode(true)}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+                className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1.5"
               >
                 <GitBranch className="mr-1 inline h-3 w-3" /> Split
               </button>
@@ -1602,9 +1604,9 @@ function ProcessedCard({
             {!isApproved && (
               <button
                 onClick={onComplete}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent"
+                className="rounded-lg border border-border px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:py-1.5"
               >
-                <CheckCircle2 className="mr-1 inline h-3 w-3" /> Already Done
+                <CheckCircle2 className="mr-1 inline h-3 w-3" /> Done
               </button>
             )}
             {!isApproved && r.timeEstimateMin > 0 && r.timeEstimateMin <= 2 && (

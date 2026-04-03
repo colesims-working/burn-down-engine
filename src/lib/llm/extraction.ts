@@ -1,5 +1,5 @@
 import { db, schema } from '@/lib/db/client';
-import { geminiGenerateJSON } from './gemini';
+import { llmGenerateJSON } from './router';
 import { KNOWLEDGE_EXTRACTION_PROMPT } from './prompts/clarify';
 import { eq, and, like } from 'drizzle-orm';
 import { geminiEmbed } from './gemini';
@@ -17,7 +17,7 @@ export async function extractAndStoreKnowledge(opts: {
   page: string;
 }): Promise<void> {
   try {
-    const extracted = await geminiGenerateJSON<ExtractedKnowledge[]>({
+    const extracted = await llmGenerateJSON<ExtractedKnowledge[]>({
       system: KNOWLEDGE_EXTRACTION_PROMPT,
       prompt: `Page: ${opts.page}\nUser input: ${opts.input}\nSystem output: ${opts.output}`,
       operation: 'extract_knowledge',

@@ -8,6 +8,8 @@ import { cn } from '@/lib/utils';
 interface Project {
   id: string;
   name: string;
+  todoistId: string | null;
+  parentTodoistId: string | null;
   category: string | null;
   goal: string | null;
   status: string | null;
@@ -249,7 +251,7 @@ export default function OrganizePage() {
         <button
           onClick={() => setTab('projects')}
           className={cn(
-            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
             tab === 'projects' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -258,7 +260,7 @@ export default function OrganizePage() {
         <button
           onClick={() => setTab('filing')}
           className={cn(
-            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
             tab === 'filing' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
           )}
         >
@@ -283,22 +285,24 @@ export default function OrganizePage() {
             ) : (
               <div className="space-y-1">
                 {active.map(p => (
-                  <div key={p.id} className="task-card flex items-center gap-3 rounded-lg px-3 py-2.5">
+                  <div key={p.id} className="task-card flex flex-wrap items-center gap-2 rounded-lg px-3 py-3 sm:flex-nowrap sm:gap-3 sm:py-2.5">
                     {getHealthDot(p)}
                     <span className="flex-1 text-sm font-medium">{p.name}</span>
-                    {p.category && (
-                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {p.category}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {p.openActionCount || 0} {(p.openActionCount || 0) === 1 ? 'task' : 'tasks'}
-                    </span>
-                    {p.lastActivityAt && (
+                    <div className="flex w-full items-center gap-2 pl-6 sm:w-auto sm:pl-0">
+                      {p.category && (
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {p.category}
+                        </span>
+                      )}
                       <span className="text-xs text-muted-foreground">
-                        {Math.floor((Date.now() - new Date(p.lastActivityAt).getTime()) / 86400000)}d ago
+                        {p.openActionCount || 0} {(p.openActionCount || 0) === 1 ? 'task' : 'tasks'}
                       </span>
-                    )}
+                      {p.lastActivityAt && (
+                        <span className="text-xs text-muted-foreground">
+                          {Math.floor((Date.now() - new Date(p.lastActivityAt).getTime()) / 86400000)}d ago
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -306,7 +310,14 @@ export default function OrganizePage() {
           </div>
 
           {/* GTD Integrity Warning: Projects with no next action */}
-          {!loading && active.filter(p => (p.openActionCount || 0) === 0).length > 0 && (
+          {!loading && (() => {
+            // Build set of todoist IDs that are parents of other projects
+            const parentIds = new Set(active.map(p => p.parentTodoistId).filter(Boolean));
+            // Leaf projects: not a parent of any other project
+            const leafWithNoActions = active.filter(p =>
+              (p.openActionCount || 0) === 0 && !parentIds.has(p.todoistId)
+            );
+            return leafWithNoActions.length > 0 ? (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
               <div className="mb-2 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-amber-400" />
@@ -318,7 +329,7 @@ export default function OrganizePage() {
                 In GTD, every active project must have at least one next action. Consider adding actions or moving these to Someday/Maybe.
               </p>
               <div className="space-y-1">
-                {active.filter(p => (p.openActionCount || 0) === 0).map(p => (
+                {leafWithNoActions.map(p => (
                   <div key={p.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
                     <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
                     <span className="flex-1 font-medium">{p.name}</span>
@@ -327,7 +338,8 @@ export default function OrganizePage() {
                 ))}
               </div>
             </div>
-          )}
+            ) : null;
+          })()}
 
           {/* Audit Section */}
           <div className="rounded-xl border border-border bg-card p-4">
@@ -411,7 +423,7 @@ export default function OrganizePage() {
       ) : (
         <div className="space-y-6">
           {/* Filing Queue Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-semibold">Needs Filing</h3>
               <p className="text-xs text-muted-foreground">
@@ -422,7 +434,7 @@ export default function OrganizePage() {
               <button
                 onClick={loadFilingSuggestions}
                 disabled={filingLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50 sm:py-1.5"
               >
                 {filingLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderKanban className="h-3 w-3" />}
                 {filingLoading ? 'Scanning...' : 'Refresh'}
@@ -481,9 +493,9 @@ export default function OrganizePage() {
                         isAccepted ? 'border-green-500/30 opacity-60' : 'border-border',
                       )}
                     >
-                      <div className="flex items-start gap-3 p-4">
+                      <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:p-4">
                         {/* Status indicator */}
-                        <div className="mt-1">
+                        <div className="hidden sm:block sm:mt-1">
                           {isAccepted ? (
                             <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500/20">
                               <Check className="h-3 w-3 text-green-400" />
@@ -571,27 +583,27 @@ export default function OrganizePage() {
 
                         {/* Actions */}
                         {!isAccepted && (
-                          <div className="flex shrink-0 flex-col gap-1.5">
+                          <div className="flex shrink-0 gap-2 sm:flex-col sm:gap-1.5">
                             <button
                               onClick={() => acceptSuggestion(s)}
                               aria-label={`Accept filing suggestion for ${s.taskTitle}`}
-                              className="inline-flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 hover:bg-green-500/30"
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-500/20 px-3 py-2.5 text-xs font-medium text-green-400 hover:bg-green-500/30 sm:flex-initial sm:py-1.5"
                             >
-                              <Check className="h-3 w-3" /> Accept
+                              <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> Accept
                             </button>
                             <button
                               onClick={() => setExpandedFiling(expandedFiling === s.taskId ? null : s.taskId)}
                               aria-label={`Change project for ${s.taskTitle}`}
-                              className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-3 py-2.5 text-xs font-medium text-muted-foreground hover:bg-accent sm:flex-initial sm:py-1.5"
                             >
                               <ChevronDown className={cn('h-3 w-3 transition-transform', expandedFiling === s.taskId && 'rotate-180')} /> Change
                             </button>
                             <button
                               onClick={() => dismissSuggestion(s.taskId)}
                               aria-label={`Skip filing suggestion for ${s.taskTitle}`}
-                              className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-muted-foreground/50 hover:text-muted-foreground"
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg px-3 py-2.5 text-xs text-muted-foreground/50 hover:text-muted-foreground sm:flex-initial sm:py-1.5"
                             >
-                              <X className="h-3 w-3" /> Skip
+                              <X className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> Skip
                             </button>
                           </div>
                         )}

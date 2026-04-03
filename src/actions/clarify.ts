@@ -1,7 +1,7 @@
 'use server';
 
 import { db, schema } from '@/lib/db/client';
-import { geminiGenerateJSON } from '@/lib/llm/gemini';
+import { llmGenerateJSON } from '@/lib/llm/router';
 import { buildContext } from '@/lib/llm/context';
 import { CLARIFY_SYSTEM_PROMPT } from '@/lib/llm/prompts/clarify';
 import { extractAndStoreKnowledge, processInlineKnowledge } from '@/lib/llm/extraction';
@@ -43,7 +43,7 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
     ? `\n\n## Additional User Instructions\n${additionalInstructions}`
     : '';
 
-  const result = await geminiGenerateJSON<ClarifyResult>({
+  const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
     prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${instructionSuffix}`,
     operation: 'clarify_task',
@@ -212,7 +212,7 @@ export async function answerClarifyQuestion(taskId: string, answer: string) {
   // Re-clarify with the additional context
   const context = await buildContext(task.originalText + '\n\nUser clarification: ' + answer, 'clarify');
 
-  const result = await geminiGenerateJSON<ClarifyResult>({
+  const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
     prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"\n\n## User's Answer to Previous Questions\n${answer}`,
     operation: 'clarify_task',

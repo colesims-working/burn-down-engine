@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
-import { geminiGenerateJSON } from '@/lib/llm/gemini';
-import { LLMOperation } from '@/lib/llm/router';
+import { llmGenerateJSON } from '@/lib/llm/router';
 import { VOICE_EXTRACTION_PROMPT } from '@/lib/llm/prompts/clarify';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '' });
@@ -24,7 +23,7 @@ export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Pr
 }
 
 export async function extractTasksFromTranscript(transcript: string): Promise<ExtractedVoiceTask[]> {
-  const tasks = await geminiGenerateJSON<ExtractedVoiceTask[]>({
+  const tasks = await llmGenerateJSON<ExtractedVoiceTask[]>({
     system: VOICE_EXTRACTION_PROMPT,
     prompt: transcript,
     operation: 'extract_tasks_from_voice',

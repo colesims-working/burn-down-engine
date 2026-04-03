@@ -267,27 +267,29 @@ export default function EngagePage() {
       </div>
 
       {/* Context Filter */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        {CONTEXTS.map(ctx => (
-          <button
-            key={ctx.value}
-            onClick={() => { setContextFilter(ctx.value); setFocusIndex(0); }}
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              contextFilter === ctx.value
-                ? 'bg-primary/20 text-primary'
-                : 'bg-secondary text-muted-foreground hover:bg-accent',
-            )}
-          >
-            <span>{ctx.icon}</span> {ctx.label}
-          </button>
-        ))}
-        {contextFilter !== 'all' && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            {filteredActive.length} task{filteredActive.length !== 1 ? 's' : ''} in context
-          </span>
-        )}
+      <div className="mb-4 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:overflow-visible sm:px-0">
+        <div className="flex items-center gap-2 pb-1 sm:flex-wrap sm:pb-0">
+          <Filter className="h-4 w-4 shrink-0 text-muted-foreground" />
+          {CONTEXTS.map(ctx => (
+            <button
+              key={ctx.value}
+              onClick={() => { setContextFilter(ctx.value); setFocusIndex(0); }}
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors sm:py-1',
+                contextFilter === ctx.value
+                  ? 'bg-primary/20 text-primary'
+                  : 'bg-secondary text-muted-foreground hover:bg-accent',
+              )}
+            >
+              <span>{ctx.icon}</span> {ctx.label}
+            </button>
+          ))}
+          {contextFilter !== 'all' && (
+            <span className="ml-2 shrink-0 text-xs text-muted-foreground">
+              {filteredActive.length} task{filteredActive.length !== 1 ? 's' : ''} in context
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Next Up — Top 5 Tasks */}
@@ -305,7 +307,7 @@ export default function EngagePage() {
             <div
               key={task.id}
               className={cn(
-                'rounded-xl border-2 p-4 transition-all',
+                'rounded-xl border-2 p-3 transition-all sm:p-4',
                 i === focusIndex
                   ? 'border-primary/40 bg-primary/5'
                   : 'border-border/50 bg-card',
@@ -320,7 +322,6 @@ export default function EngagePage() {
                     <div className="mt-0.5 text-xs text-muted-foreground">{task.nextAction}</div>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <PriorityBadge priority={task.priority || 4} size={i === 0 ? 'md' : 'sm'} />
                     <EnergyBadge level={task.energyLevel} />
                     <TimeEstimate minutes={task.timeEstimateMin} />
                     {task.labels && (
@@ -330,7 +331,8 @@ export default function EngagePage() {
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 gap-1.5">
+                {/* Desktop action buttons */}
+                <div className="hidden shrink-0 gap-1.5 sm:flex">
                   <button
                     onClick={() => handleComplete(task.id)}
                     aria-label={`Complete: ${task.title}`}
@@ -353,6 +355,30 @@ export default function EngagePage() {
                     <Ban className="h-3.5 w-3.5" />
                   </button>
                 </div>
+              </div>
+              {/* Mobile action buttons — full-width row */}
+              <div className="mt-3 flex gap-2 sm:hidden">
+                <button
+                  onClick={() => handleComplete(task.id)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-green-500/20 py-2.5 text-xs font-medium text-green-400 transition-colors active:bg-green-500/30"
+                >
+                  <Check className="h-4 w-4" />
+                  Done
+                </button>
+                <button
+                  onClick={() => handleDefer(task.id)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors active:bg-accent"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                  Defer
+                </button>
+                <button
+                  onClick={() => setBlockModal(task.id)}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors active:bg-accent"
+                >
+                  <Ban className="h-4 w-4" />
+                  Block
+                </button>
               </div>
             </div>
           ))}
@@ -604,17 +630,30 @@ function TaskSection({
               <button
                 onClick={() => onComplete(task.id)}
                 aria-label={`Complete task: ${task.title}`}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors hover:border-green-400 hover:text-green-400"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-transparent transition-colors hover:border-green-400 hover:text-green-400 sm:h-5 sm:w-5"
               >
-                <Check className="h-3 w-3" />
+                <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
               </button>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium break-words">{task.title}</div>
                 {task.nextAction && expandedId !== task.id && (
                   <div className="text-xs text-muted-foreground break-words">{task.nextAction}</div>
                 )}
+                {/* Mobile-only: inline badges below title */}
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
+                  <PriorityBadge priority={task.priority || 4} />
+                  <EnergyBadge level={task.energyLevel} />
+                  <TimeEstimate minutes={task.timeEstimateMin} />
+                  {(task.bumpCount || 0) >= 2 && (
+                    <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400">
+                      <RotateCcw className="h-3 w-3" />
+                      {task.bumpCount}x
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              {/* Desktop-only: badges in row */}
+              <div className="hidden shrink-0 items-center gap-2 sm:flex">
                 <PriorityBadge priority={task.priority || 4} />
                 <EnergyBadge level={task.energyLevel} />
                 <TimeEstimate minutes={task.timeEstimateMin} />
@@ -624,13 +663,13 @@ function TaskSection({
                     {task.bumpCount}x
                   </span>
                 )}
-                <button
-                  onClick={() => onExpand(expandedId === task.id ? null : task.id)}
-                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100"
-                >
-                  <ChevronDown className={cn('h-4 w-4 transition-transform', expandedId === task.id && 'rotate-180')} />
-                </button>
               </div>
+              <button
+                onClick={() => onExpand(expandedId === task.id ? null : task.id)}
+                className="touch-show flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 sm:h-auto sm:w-auto sm:rounded sm:p-1"
+              >
+                <ChevronDown className={cn('h-4 w-4 transition-transform', expandedId === task.id && 'rotate-180')} />
+              </button>
             </div>
 
             {expandedId === task.id && (
@@ -640,13 +679,13 @@ function TaskSection({
                 <div className="flex gap-2">
                   <button
                     onClick={() => onComplete(task.id)}
-                    className="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400 hover:bg-green-500/30"
+                    className="rounded-lg bg-green-500/20 px-3 py-2.5 text-xs text-green-400 hover:bg-green-500/30 sm:px-2 sm:py-1 sm:rounded"
                   >
                     Complete
                   </button>
                   <button
                     onClick={() => onDefer(task.id)}
-                    className="rounded bg-secondary px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                    className="rounded-lg bg-secondary px-3 py-2.5 text-xs text-muted-foreground hover:bg-accent sm:px-2 sm:py-1 sm:rounded"
                   >
                     Defer
                   </button>

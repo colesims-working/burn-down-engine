@@ -156,7 +156,7 @@ export default function ReflectPage() {
         <button
           onClick={() => setTab('daily')}
           className={cn(
-            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
             tab === 'daily' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
           )}
         >
@@ -165,7 +165,7 @@ export default function ReflectPage() {
         <button
           onClick={() => setTab('weekly')}
           className={cn(
-            'flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors',
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
             tab === 'weekly' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
           )}
         >
@@ -176,7 +176,7 @@ export default function ReflectPage() {
       {tab === 'daily' && data && (
         <div className="space-y-6">
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: 'Completed', value: data.completed.length, color: 'text-green-400' },
               { label: 'Remaining', value: data.planned.length, color: 'text-amber-400' },
@@ -230,13 +230,13 @@ export default function ReflectPage() {
                           }}
                           aria-label={`${action === 'bump' ? 'Bump' : action === 'block' ? 'Block' : 'Kill'} task: ${t.title}`}
                           className={cn(
-                            'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                            'inline-flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-medium transition-colors sm:py-1.5',
                             taskActions[t.id] === action
                               ? action === 'kill' ? 'bg-red-500/20 text-red-400' : 'bg-primary/20 text-primary'
                               : 'bg-secondary text-muted-foreground hover:bg-accent',
                           )}
                         >
-                          {action === 'bump' && <><ArrowRight className="h-3 w-3" /> Bump to tomorrow</>}
+                          {action === 'bump' && <><ArrowRight className="h-3 w-3" /> Bump<span className="hidden sm:inline"> to tomorrow</span></>}
                           {action === 'block' && <><Ban className="h-3 w-3" /> Blocked</>}
                           {action === 'kill' && <><Skull className="h-3 w-3" /> Kill it</>}
                         </button>
@@ -351,7 +351,7 @@ export default function ReflectPage() {
               </div>
 
               {/* Completion Trend + Top Wins */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="rounded-xl border border-border bg-card p-4">
                   <div className="mb-2 flex items-center gap-2">
                     {weeklyReview.completionTrend.startsWith('improving') ? (
@@ -619,7 +619,7 @@ function WeeklyReviewChecklist({ onRunReview }: { onRunReview: () => void }) {
               <label
                 key={item.id}
                 className={cn(
-                  'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-secondary/50',
+                  'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-sm transition-colors hover:bg-secondary/50 sm:py-2',
                   checked.has(item.id) && 'text-muted-foreground',
                 )}
               >
@@ -627,7 +627,7 @@ function WeeklyReviewChecklist({ onRunReview }: { onRunReview: () => void }) {
                   type="checkbox"
                   checked={checked.has(item.id)}
                   onChange={() => toggle(item.id)}
-                  className="h-4 w-4 rounded border-border accent-primary"
+                  className="h-5 w-5 rounded border-border accent-primary"
                 />
                 <span className={checked.has(item.id) ? 'line-through' : ''}>
                   {item.label}

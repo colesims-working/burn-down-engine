@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm';
 export const projects = sqliteTable('projects', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   todoistId: text('todoist_id').unique(),
+  parentTodoistId: text('parent_todoist_id'),
 
   name: text('name').notNull(),
   category: text('category', {
