@@ -1,7 +1,7 @@
 import { db, schema } from './client';
 import type { LLMOperation } from '@/lib/llm/router';
 
-export type Provider = 'gemini' | 'anthropic' | 'openai';
+export type Provider = 'gemini' | 'anthropic' | 'openai' | 'openrouter';
 
 export interface ModelAssignment {
   provider: Provider;
@@ -43,6 +43,7 @@ const DEFAULTS: schema.AppSettings = {
   modelConfig: JSON.stringify(DEFAULT_MODEL_CONFIG),
   disabledModels: '[]',
   autoApproveThreshold: 0.8,
+  monthlyBudget: null,
   updatedAt: null,
 };
 
@@ -86,6 +87,7 @@ export async function updateAppSettings(data: {
   modelConfig?: ModelConfig;
   disabledModels?: string[];
   autoApproveThreshold?: number;
+  monthlyBudget?: number | null;
 }): Promise<schema.AppSettings> {
   const current = await getAppSettings();
   const modelConfigStr = data.modelConfig ? JSON.stringify(data.modelConfig) : current.modelConfig;
@@ -108,6 +110,7 @@ export async function updateAppSettings(data: {
         modelConfig: merged.modelConfig,
         disabledModels: merged.disabledModels,
         autoApproveThreshold: merged.autoApproveThreshold,
+        monthlyBudget: merged.monthlyBudget,
         updatedAt: merged.updatedAt,
       },
     });

@@ -31,46 +31,68 @@ export async function syncInbox(): Promise<schema.Task[]> {
     : [];
   const existingByTodoistId = new Map(existingTasks.map(t => [t.todoistId, t]));
 
-  // Upsert tasks currently in Todoist inbox — batch writes in parallel
-  const upsertPromises = todoistTasks.map(async (tt) => {
-    const existing = existingByTodoistId.get(tt.id);
+  // Upsert tasks in small batches — Turso free tier has tight memory limits
+  const BATCH_SIZE = 5;
+  const synced: schema.Task[] = [];
 
-    if (existing) {
-      const updated = await db.update(schema.tasks)
-        .set({
-          title: tt.content,
-          description: tt.description || null,
-          dueDate: tt.due?.date || null,
-          labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.is_recurring || false,
-          recurrenceRule: tt.due?.string || null,
-          status: 'inbox',
-          todoistSyncedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(schema.tasks.id, existing.id))
-        .returning();
-      return updated[0];
-    } else {
-      const created = await db.insert(schema.tasks)
-        .values({
-          todoistId: tt.id,
-          originalText: tt.content,
-          title: tt.content,
-          description: tt.description || null,
-          dueDate: tt.due?.date || null,
-          priority: mapFromTodoistPriority(tt.priority),
-          labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.is_recurring || false,
-          recurrenceRule: tt.due?.string || null,
-          status: 'inbox',
-          todoistSyncedAt: new Date().toISOString(),
-        })
-        .returning();
-      return created[0];
-    }
-  });
-  const synced = await Promise.all(upsertPromises);
+  for (let i = 0; i < todoistTasks.length; i += BATCH_SIZE) {
+    const batch = todoistTasks.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(async (tt) => {
+      const existing = existingByTodoistId.get(tt.id);
+      const now = new Date().toISOString();
+
+      if (existing) {
+        const updated = await db.update(schema.tasks)
+          .set({
+            title: tt.content,
+            description: tt.description || null,
+            dueDate: tt.due?.date || null,
+            labels: JSON.stringify(tt.labels),
+            isRecurring: tt.due?.is_recurring || false,
+            recurrenceRule: tt.due?.string || null,
+            status: 'inbox',
+            todoistSyncedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.tasks.id, existing.id))
+          .returning();
+        return updated[0];
+      } else {
+        // Use onConflictDoUpdate to handle race conditions with concurrent syncs
+        const result = await db.insert(schema.tasks)
+          .values({
+            todoistId: tt.id,
+            originalText: tt.content,
+            title: tt.content,
+            description: tt.description || null,
+            dueDate: tt.due?.date || null,
+            priority: mapFromTodoistPriority(tt.priority),
+            labels: JSON.stringify(tt.labels),
+            isRecurring: tt.due?.is_recurring || false,
+            recurrenceRule: tt.due?.string || null,
+            status: 'inbox',
+            todoistSyncedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: schema.tasks.todoistId,
+            set: {
+              title: tt.content,
+              description: tt.description || null,
+              dueDate: tt.due?.date || null,
+              labels: JSON.stringify(tt.labels),
+              isRecurring: tt.due?.is_recurring || false,
+              recurrenceRule: tt.due?.string || null,
+              status: 'inbox',
+              todoistSyncedAt: now,
+              updatedAt: now,
+            },
+          })
+          .returning();
+        return result[0];
+      }
+    }));
+    synced.push(...batchResults);
+  }
 
   // Reconcile: local tasks marked 'inbox' that are no longer in Todoist inbox
   const localInbox = await db.query.tasks.findMany({
@@ -173,17 +195,33 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
     }
 
     if (existing) {
+      // Only update fields that actually changed from Todoist
+      const newTitle = tt.content;
+      const newDescription = tt.description || null;
+      const newProjectId = localProjectId ?? existing.projectId; // preserve local assignments
+      const newDueDate = tt.due?.date || null;
+      const newLabels = JSON.stringify(tt.labels);
+      const newIsRecurring = tt.due?.is_recurring || false;
+      const newRecurrenceRule = tt.due?.string || null;
+
+      // Only bump updatedAt if something actually changed
+      const changed = newTitle !== existing.title
+        || newDescription !== existing.description
+        || newProjectId !== existing.projectId
+        || newDueDate !== existing.dueDate
+        || newLabels !== existing.labels;
+
       const updated = await db.update(schema.tasks)
         .set({
-          title: tt.content,
-          description: tt.description || null,
-          projectId: localProjectId,
-          dueDate: tt.due?.date || null,
-          labels: JSON.stringify(tt.labels),
-          isRecurring: tt.due?.is_recurring || false,
-          recurrenceRule: tt.due?.string || null,
+          title: newTitle,
+          description: newDescription,
+          projectId: newProjectId,
+          dueDate: newDueDate,
+          labels: newLabels,
+          isRecurring: newIsRecurring,
+          recurrenceRule: newRecurrenceRule,
           todoistSyncedAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          ...(changed ? { updatedAt: new Date().toISOString() } : {}),
         })
         .where(eq(schema.tasks.id, existing.id))
         .returning();
@@ -312,9 +350,39 @@ export async function completeTaskInTodoist(localTask: schema.Task): Promise<voi
   await todoist.completeTask(localTask.todoistId);
 }
 
+export async function reopenTaskInTodoist(localTask: schema.Task): Promise<void> {
+  if (!localTask.todoistId) return;
+  await todoist.reopenTask(localTask.todoistId);
+}
+
 export async function killTaskInTodoist(localTask: schema.Task): Promise<void> {
   if (!localTask.todoistId) return;
   await todoist.deleteTask(localTask.todoistId);
+}
+
+/** Re-create a killed/deleted task in Todoist and return the new Todoist ID */
+export async function recreateTaskInTodoist(localTask: schema.Task): Promise<string | null> {
+  if (!localTask.title) return null;
+
+  // Resolve project's Todoist ID if we have a local project reference
+  let todoistProjectId: string | undefined;
+  if (localTask.projectId) {
+    const proj = await db.query.projects.findFirst({
+      where: eq(schema.projects.id, localTask.projectId),
+    });
+    todoistProjectId = proj?.todoistId || undefined;
+  }
+
+  const created = await todoist.createTask({
+    content: localTask.title,
+    description: localTask.nextAction || undefined,
+    project_id: todoistProjectId,
+    priority: mapToTodoistPriority(localTask.priority || 4),
+    due_date: localTask.dueDate || undefined,
+    labels: JSON.parse(localTask.labels || '[]'),
+  });
+
+  return created.id;
 }
 
 export async function syncTaskDueDate(localTask: schema.Task): Promise<void> {
@@ -344,35 +412,33 @@ export async function addTodoistComment(todoistTaskId: string, content: string):
 export async function refreshProjectCounts(): Promise<void> {
   const allProjects = await db.query.projects.findMany();
 
-  for (const project of allProjects) {
-    // Count open (non-completed, non-killed) tasks in this project
-    const openTasks = await db.query.tasks.findMany({
-      where: and(
-        eq(schema.tasks.projectId, project.id),
-        ne(schema.tasks.status, 'completed'),
-        ne(schema.tasks.status, 'killed'),
-      ),
-    });
+  // Batch: get all tasks at once instead of 2N queries
+  const allTasks = await db.query.tasks.findMany({
+    where: sql`${schema.tasks.projectId} IS NOT NULL`,
+  });
 
-    // Find most recent activity (any task update in this project)
-    const allProjectTasks = await db.query.tasks.findMany({
-      where: eq(schema.tasks.projectId, project.id),
-    });
-
-    let lastActivity: string | null = project.lastActivityAt;
-    for (const t of allProjectTasks) {
-      const taskDate = t.completedAt || t.updatedAt || t.createdAt;
-      if (taskDate && (!lastActivity || taskDate > lastActivity)) {
-        lastActivity = taskDate;
-      }
+  // Group by project
+  const countsByProject = new Map<string, { open: number; lastActivity: string | null }>();
+  for (const t of allTasks) {
+    if (!t.projectId) continue;
+    const entry = countsByProject.get(t.projectId) || { open: 0, lastActivity: null };
+    if (t.status !== 'completed' && t.status !== 'killed') entry.open++;
+    const taskDate = t.completedAt || t.updatedAt || t.createdAt;
+    if (taskDate && (!entry.lastActivity || taskDate > entry.lastActivity)) {
+      entry.lastActivity = taskDate;
     }
+    countsByProject.set(t.projectId, entry);
+  }
 
-    await db.update(schema.projects)
+  // Update all projects in parallel
+  await Promise.all(allProjects.map(project => {
+    const counts = countsByProject.get(project.id) || { open: 0, lastActivity: project.lastActivityAt };
+    return db.update(schema.projects)
       .set({
-        openActionCount: openTasks.length,
-        lastActivityAt: lastActivity,
+        openActionCount: counts.open,
+        lastActivityAt: counts.lastActivity,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(schema.projects.id, project.id));
-  }
+  }));
 }

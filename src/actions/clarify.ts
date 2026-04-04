@@ -127,6 +127,9 @@ export async function applyClarification(
 
   if (!pushed) {
     // Todoist push failed — task stays inbox, user can retry
+    // Still revalidate since task metadata (title, project, etc.) was updated in Step 2
+    revalidatePath('/inbox');
+    revalidatePath('/clarify');
     return enrichedTask;
   }
 
@@ -191,6 +194,7 @@ export async function applyClarification(
   // Generate embedding (best-effort, non-blocking)
   void embedTask(finalTask).catch(() => {});
 
+  revalidatePath('/inbox');
   revalidatePath('/clarify');
   revalidatePath('/engage');
   return finalTask;
@@ -236,6 +240,7 @@ export async function batchApproveClarifications(
     const result = await applyClarification(taskId, clarification);
     results.push(result);
   }
+  revalidatePath('/inbox');
   revalidatePath('/clarify');
   revalidatePath('/engage');
   return results;

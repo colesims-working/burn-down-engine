@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useState, useRef } from 'react';
+import { useInboxCount } from '@/components/providers/trust-provider';
+import { HealthIndicator } from '@/components/shared/health-indicator';
 
 const tabs = [
   { href: '/inbox', label: 'Inbox', icon: Inbox },
@@ -72,7 +74,9 @@ export function MobileTopBar() {
         <span className="text-sm font-semibold tracking-tight">Burn-Down</span>
       </div>
 
-      <div className="relative" ref={menuRef}>
+      <div className="flex items-center gap-1">
+        <HealthIndicator compact />
+        <div className="relative" ref={menuRef}>
         <button
           onClick={() => setMoreOpen(!moreOpen)}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent"
@@ -84,7 +88,7 @@ export function MobileTopBar() {
         {moreOpen && (
           <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border border-border bg-card py-1 shadow-xl">
             {moreItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
               const Icon = item.icon;
               return (
                 <Link
@@ -112,6 +116,7 @@ export function MobileTopBar() {
             </button>
           </div>
         )}
+        </div>
       </div>
     </header>
   );
@@ -119,23 +124,7 @@ export function MobileTopBar() {
 
 export function MobileBottomTabs() {
   const pathname = usePathname();
-  const [inboxCount, setInboxCount] = useState(0);
-
-  useEffect(() => {
-    async function fetchCount() {
-      try {
-        const res = await fetch('/api/todoist?action=inbox-count');
-        if (res.ok) {
-          const data = await res.json();
-          setInboxCount(data.count || 0);
-        }
-      } catch {}
-    }
-    fetchCount();
-    const onInboxChanged = () => fetchCount();
-    window.addEventListener('inbox-changed', onInboxChanged);
-    return () => window.removeEventListener('inbox-changed', onInboxChanged);
-  }, [pathname]);
+  const { inboxCount } = useInboxCount();
 
   return (
     <nav
@@ -145,7 +134,7 @@ export function MobileBottomTabs() {
     >
       <div className="flex items-stretch">
         {tabs.map((tab) => {
-          const isActive = pathname === tab.href;
+          const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/');
           const Icon = tab.icon;
           const showBadge = tab.href === '/inbox' && inboxCount > 0;
 
@@ -156,13 +145,13 @@ export function MobileBottomTabs() {
               role="tab"
               aria-selected={isActive}
               className={cn(
-                'relative flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[10px] font-medium transition-colors',
+                'relative flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 text-[10px] font-medium transition-all duration-200',
                 isActive
                   ? 'text-primary'
                   : 'text-muted-foreground active:text-foreground',
               )}
             >
-              <div className="relative">
+              <div className={cn('relative transition-transform duration-200', isActive && 'scale-110')}>
                 <Icon className="h-5 w-5" />
                 {showBadge && (
                   <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">

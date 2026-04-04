@@ -6,6 +6,7 @@ import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 
 interface KnowledgeEntry {
   id: string;
@@ -51,6 +52,8 @@ export default function KnowledgePage() {
   const [showAddPerson, setShowAddPerson] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: 'entry' | 'person' } | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     try {
       const catParam = category !== 'all' ? `&category=${category}` : '';
@@ -62,6 +65,9 @@ export default function KnowledgePage() {
       if (entriesRes.ok) setEntries(await entriesRes.json());
       if (peopleRes.ok) setPeople(await peopleRes.json());
       if (statsRes.ok) setStats(await statsRes.json());
+      setLoadError(null);
+    } catch {
+      setLoadError('Failed to load knowledge base.');
     } finally {
       setLoading(false);
     }
@@ -76,21 +82,31 @@ export default function KnowledgePage() {
   );
 
   const deleteEntry = async (id: string) => {
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-knowledge', id }),
-    });
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-knowledge', id }),
+      });
+      if (!res.ok) toast({ title: 'Delete failed', description: 'Could not delete the entry.', duration: 4000 });
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 4000 });
+    }
     setDeleteConfirm(null);
     await fetchData();
   };
 
   const deletePerson = async (id: string) => {
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'delete-person', id }),
-    });
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-person', id }),
+      });
+      if (!res.ok) toast({ title: 'Delete failed', description: 'Could not delete the person.', duration: 4000 });
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 4000 });
+    }
     setDeleteConfirm(null);
     await fetchData();
   };
@@ -200,18 +216,22 @@ export default function KnowledgePage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground uppercase">{entry.category}</span>
-                        <span className="text-sm font-medium truncate">{entry.key}</span>
+                        <span className="text-sm font-medium truncate" title={entry.key}>{entry.key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.value}</p>
                       <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground/60">
-                      {entry.confidence !== null && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="inline-block h-1.5 w-12 rounded-full bg-secondary overflow-hidden">
-                            <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round(entry.confidence * 100)}%` }} />
+                      {entry.confidence !== null && (() => {
+                        const pct = Math.round(entry.confidence * 100);
+                        const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-500';
+                        return (
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="inline-block h-1.5 w-12 rounded-full bg-secondary overflow-hidden">
+                              <span className={`block h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
+                            </span>
+                            {pct}%
                           </span>
-                          {Math.round(entry.confidence * 100)}%
-                        </span>
-                      )}
+                        );
+                      })()}
                         {entry.source && <span>Source: {entry.source}</span>}
                         {(entry.timesReferenced || 0) > 0 && <span>Referenced: {entry.timesReferenced}x</span>}
                       </div>
@@ -274,11 +294,12 @@ export default function KnowledgePage() {
           title="Add Knowledge Entry"
           onClose={() => setShowAddEntry(false)}
           onSubmit={async (data) => {
-            await fetch('/api/todoist', {
+            const res = await fetch('/api/todoist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'create-knowledge', ...data }),
             });
+            if (!res.ok) throw new Error('Failed to save');
             setShowAddEntry(false);
             await fetchData();
           }}
@@ -296,11 +317,12 @@ export default function KnowledgePage() {
           title="Add Person"
           onClose={() => setShowAddPerson(false)}
           onSubmit={async (data) => {
-            await fetch('/api/todoist', {
+            const res = await fetch('/api/todoist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'create-person', ...data }),
             });
+            if (!res.ok) throw new Error('Failed to save');
             setShowAddPerson(false);
             await fetchData();
           }}
@@ -321,11 +343,12 @@ export default function KnowledgePage() {
           initialData={{ category: editingEntry.category, key: editingEntry.key, value: editingEntry.value }}
           onClose={() => setEditingEntry(null)}
           onSubmit={async (data) => {
-            await fetch('/api/todoist', {
+            const res = await fetch('/api/todoist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'update-knowledge', id: editingEntry.id, data }),
             });
+            if (!res.ok) throw new Error('Failed to save');
             setEditingEntry(null);
             await fetchData();
           }}
@@ -344,11 +367,12 @@ export default function KnowledgePage() {
           initialData={{ name: editingPerson.name, relationship: editingPerson.relationship || '', organization: editingPerson.organization || '', role: editingPerson.role || '', contextNotes: editingPerson.contextNotes || '' }}
           onClose={() => setEditingPerson(null)}
           onSubmit={async (data) => {
-            await fetch('/api/todoist', {
+            const res = await fetch('/api/todoist', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ action: 'update-person', id: editingPerson.id, data }),
             });
+            if (!res.ok) throw new Error('Failed to save');
             setEditingPerson(null);
             await fetchData();
           }}
@@ -381,7 +405,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-lg font-semibold">{value}</div>
+      <div className="mt-1 text-lg font-semibold truncate" title={String(value)}>{value}</div>
       {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
@@ -412,15 +436,22 @@ function FormModal({
     initialData || Object.fromEntries(fields.map(f => [f.name, f.type === 'select' && f.options ? f.options[0].value : '']))
   );
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setSubmitting(true);
-    await onSubmit(data);
-    setSubmitting(false);
+    setSubmitError(null);
+    try {
+      await onSubmit(data);
+    } catch {
+      setSubmitError('Failed to save. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open={true} onOpenChange={(open) => { if (!open && !submitting) onClose(); }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -456,6 +487,9 @@ function FormModal({
             </div>
           ))}
         </div>
+        {submitError && (
+          <div className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{submitError}</div>
+        )}
         <DialogFooter>
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm text-muted-foreground hover:bg-accent">Cancel</button>
           <button onClick={handleSubmit} disabled={submitting} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

@@ -5,6 +5,9 @@ import { BarChart3, Check, ArrowRight, Ban, Skull, Loader2, Sparkles, Calendar, 
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useUndo } from '@/components/providers/trust-provider';
+import { toast } from '@/hooks/use-toast';
+import type { TaskSnapshot } from '@/lib/undo/engine';
 
 interface Task {
   id: string;
@@ -47,6 +50,7 @@ interface WeeklyReview {
 }
 
 export default function ReflectPage() {
+  const { pushUndo, isActionBusy, markBusy } = useUndo();
   const [tab, setTab] = useState<'daily' | 'weekly'>('daily');
   const [data, setData] = useState<ReviewData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,13 +93,25 @@ export default function ReflectPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'daily-observations' }),
       });
-      if (res.ok) setObservations(await res.json());
+      if (res.ok) {
+        setObservations(await res.json());
+      } else {
+        toast({ title: 'Observation failed', description: 'Could not generate AI observations.', duration: 5000 });
+      }
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
     } finally {
       setGenerating(false);
     }
   };
 
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const saveReview = async () => {
+    setSaving(true);
+    setSaveError(null);
+
     const bumpedTasks = Object.entries(taskActions)
       .filter(([, action]) => action === 'bump')
       .map(([taskId]) => ({ taskId, reason: 'daily review' }));
@@ -106,20 +122,29 @@ export default function ReflectPage() {
       .filter(([, action]) => action === 'kill')
       .map(([taskId]) => taskId);
 
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'save-daily-review',
-        reviewDate: data?.reviewDate,
-        completedTaskIds: data?.completed.map(t => t.id) || [],
-        bumpedTasks,
-        blockedTasks,
-        killedTaskIds,
-        freeCapture,
-        tomorrowSeed: [],
-      }),
-    });
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save-daily-review',
+          reviewDate: data?.reviewDate,
+          completedTaskIds: data?.completed.map(t => t.id) || [],
+          bumpedTasks,
+          blockedTasks,
+          killedTaskIds,
+          freeCapture,
+          tomorrowSeed: [],
+        }),
+      });
+      if (!res.ok) {
+        setSaveError('Failed to save review. Please try again.');
+      }
+    } catch {
+      setSaveError('Network error. Please check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const runWeeklyReview = async () => {
@@ -132,7 +157,11 @@ export default function ReflectPage() {
       });
       if (res.ok) {
         setWeeklyReview(await res.json());
+      } else {
+        toast({ title: 'Weekly review failed', description: 'Could not generate the weekly analysis.', duration: 5000 });
       }
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
     } finally {
       setWeeklyLoading(false);
     }
@@ -157,7 +186,7 @@ export default function ReflectPage() {
           onClick={() => setTab('daily')}
           className={cn(
             'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
-            tab === 'daily' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
+            tab === 'daily' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground',
           )}
         >
           Daily Close-Out
@@ -166,7 +195,7 @@ export default function ReflectPage() {
           onClick={() => setTab('weekly')}
           className={cn(
             'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
-            tab === 'weekly' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground',
+            tab === 'weekly' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground',
           )}
         >
           Weekly Review
@@ -178,10 +207,10 @@ export default function ReflectPage() {
           {/* Stats */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Completed', value: data.completed.length, color: 'text-green-400' },
+              { label: 'Completed', value: data.completed.length, color: data.completed.length > 0 ? 'text-green-400' : 'text-muted-foreground' },
               { label: 'Remaining', value: data.planned.length, color: 'text-amber-400' },
-              { label: 'Fires', value: data.fires, color: 'text-red-400' },
-              { label: 'Rate', value: `${Math.round(data.completionRate * 100)}%`, color: 'text-blue-400' },
+              { label: 'Fires', value: data.fires, color: data.fires > 0 ? 'text-red-400' : 'text-muted-foreground' },
+              { label: 'Rate', value: data.completed.length === 0 && data.planned.length === 0 ? '—' : `${Math.round(data.completionRate * 100)}%`, color: data.completed.length === 0 && data.planned.length === 0 ? 'text-muted-foreground' : 'text-blue-400' },
             ].map(stat => (
               <div key={stat.label} className="rounded-xl border border-border bg-card p-4 text-center">
                 <div className={cn('text-2xl font-bold', stat.color)}>{stat.value}</div>
@@ -301,11 +330,15 @@ export default function ReflectPage() {
           </div>
 
           {/* Save */}
+          {saveError && (
+            <div className="mb-2 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{saveError}</div>
+          )}
           <button
             onClick={saveReview}
-            className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            disabled={saving}
+            className="w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            Save & Close Day
+            {saving ? 'Saving...' : 'Save & Close Day'}
           </button>
 
           {/* Kill Confirmation */}

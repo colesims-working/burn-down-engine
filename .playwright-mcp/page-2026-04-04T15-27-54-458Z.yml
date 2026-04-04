@@ -1,0 +1,155 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]:
+          - heading "Burn-Down" [level=1] [ref=e9]
+          - paragraph [ref=e10]: Engine
+      - navigation "GTD workflow progress" [ref=e12]:
+        - generic "Inbox" [ref=e14]
+        - generic "Clarify" [ref=e17]
+        - generic "Organize" [ref=e20]
+        - generic "Engage" [ref=e23]
+        - generic "Reflect" [ref=e26]
+      - navigation [ref=e27]:
+        - link "Inbox" [ref=e28] [cursor=pointer]:
+          - /url: /inbox
+          - img [ref=e29]
+          - generic [ref=e32]: Inbox
+        - link "Clarify" [ref=e33] [cursor=pointer]:
+          - /url: /clarify
+          - img [ref=e34]
+          - generic [ref=e36]: Clarify
+        - link "Organize" [ref=e37] [cursor=pointer]:
+          - /url: /organize
+          - img [ref=e38]
+          - generic [ref=e40]: Organize
+        - link "Engage" [ref=e41] [cursor=pointer]:
+          - /url: /engage
+          - img [ref=e42]
+          - generic [ref=e44]: Engage
+        - link "Reflect" [ref=e45] [cursor=pointer]:
+          - /url: /reflect
+          - img [ref=e46]
+          - generic [ref=e48]: Reflect
+      - button "Checking..." [ref=e51] [cursor=pointer]:
+        - generic [ref=e53]: Checking...
+      - generic [ref=e54]:
+        - link "Knowledge" [ref=e55] [cursor=pointer]:
+          - /url: /knowledge
+          - img [ref=e56]
+          - generic [ref=e66]: Knowledge
+        - link "Settings" [ref=e67] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e68]
+          - generic [ref=e71]: Settings
+        - button "Log out" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e76]: Log out
+    - main [ref=e77]:
+      - generic [ref=e79]:
+        - generic [ref=e81]:
+          - heading "Settings" [level=1] [ref=e82]
+          - paragraph [ref=e83]: Configuration and system management
+        - generic [ref=e84]:
+          - generic [ref=e85]:
+            - generic [ref=e86]:
+              - img [ref=e87]
+              - generic [ref=e91]:
+                - heading "API Connections" [level=2] [ref=e92]
+                - paragraph [ref=e93]: All keys are stored server-side as environment variables.
+            - generic [ref=e94]:
+              - generic [ref=e95]:
+                - generic [ref=e96]:
+                  - generic [ref=e97]: Todoist
+                  - code [ref=e98]: TODOIST_API_TOKEN
+                - generic [ref=e100]: ● Set via env
+              - generic [ref=e101]:
+                - generic [ref=e102]:
+                  - generic [ref=e103]: Google Gemini
+                  - code [ref=e104]: GEMINI_API_KEY
+                - generic [ref=e106]: ● Set via env
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - generic [ref=e109]: Anthropic
+                  - code [ref=e110]: ANTHROPIC_API_KEY
+                - generic [ref=e112]: ● Set via env
+              - generic [ref=e113]:
+                - generic [ref=e114]:
+                  - generic [ref=e115]: OpenAI
+                  - code [ref=e116]: OPENAI_API_KEY
+                - generic [ref=e118]: ● Set via env
+            - paragraph [ref=e119]: To update keys, modify environment variables in your .env.local file.
+          - generic [ref=e120]:
+            - generic [ref=e121]:
+              - img [ref=e122]
+              - generic [ref=e127]:
+                - heading "Todoist Sync" [level=2] [ref=e128]
+                - paragraph [ref=e129]: Pull tasks and projects from Todoist
+            - generic [ref=e130]:
+              - generic [ref=e131]: Never synced
+              - button "Full Sync" [ref=e132] [cursor=pointer]:
+                - img [ref=e133]
+                - text: Full Sync
+          - generic [ref=e138]:
+            - generic [ref=e139]:
+              - img [ref=e140]
+              - generic [ref=e143]:
+                - heading "LLM Configuration" [level=2] [ref=e144]
+                - paragraph [ref=e145]: Per-operation model assignment with provider selection
+            - generic [ref=e146]:
+              - img [ref=e147]
+              - text: Loading available models...
+          - button "Admin Panel Model health check, enable/disable models, diagnostics" [ref=e150] [cursor=pointer]:
+            - generic [ref=e151]:
+              - img [ref=e152]
+              - generic [ref=e154]:
+                - heading "Admin Panel" [level=2] [ref=e155]
+                - paragraph [ref=e156]: Model health check, enable/disable models, diagnostics
+            - img [ref=e157]
+          - generic [ref=e159]:
+            - generic [ref=e160]:
+              - img [ref=e161]
+              - generic [ref=e165]:
+                - heading "Data Management" [level=2] [ref=e166]
+                - paragraph [ref=e167]: Export and manage your data
+            - generic [ref=e168]:
+              - button "Export Knowledge Base" [ref=e169] [cursor=pointer]:
+                - img [ref=e170]
+                - text: Export Knowledge Base
+              - button "Export Task History" [ref=e173] [cursor=pointer]:
+                - img [ref=e174]
+                - text: Export Task History
+            - generic [ref=e177]:
+              - generic [ref=e178]:
+                - img [ref=e179]
+                - text: Danger Zone
+              - paragraph [ref=e181]: Reset the knowledge base to start fresh. This cannot be undone.
+              - button "Reset Knowledge Base" [ref=e182] [cursor=pointer]
+          - generic [ref=e183]:
+            - generic [ref=e184]:
+              - img [ref=e185]
+              - generic [ref=e188]:
+                - heading "Task Formatting" [level=2] [ref=e189]
+                - paragraph [ref=e190]: Default labels, priorities, and display preferences
+            - generic [ref=e191]:
+              - generic [ref=e192]:
+                - generic [ref=e193]: Default Labels
+                - generic [ref=e194]:
+                  - generic [ref=e195]: "@deep-work"
+                  - generic [ref=e196]: "@quick-win"
+                  - generic [ref=e197]: "@waiting"
+                  - generic [ref=e198]: "@errand"
+                  - generic [ref=e199]: "@home"
+                  - generic [ref=e200]: "@work"
+                  - generic [ref=e201]: "@personal"
+              - generic [ref=e202]:
+                - generic [ref=e203]: Priority Levels
+                - generic [ref=e204]: P0 (Fire) → P1 (Must) → P2 (Should) → P3 (This Week) → P4 (Backlog)
+              - generic [ref=e205]:
+                - generic [ref=e206]: Time Estimate Rounding
+                - generic [ref=e207]: 5-minute increments
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e208]

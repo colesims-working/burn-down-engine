@@ -60,11 +60,19 @@ export default function OrganizePage() {
   const [expandedFiling, setExpandedFiling] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     async function load() {
       try {
         const res = await fetch('/api/todoist?action=projects');
-        if (res.ok) setProjects(await res.json());
+        if (res.ok) {
+          setProjects(await res.json());
+        } else {
+          setLoadError('Failed to load projects.');
+        }
+      } catch {
+        setLoadError('Network error — could not load projects.');
       } finally {
         setLoading(false);
       }
@@ -252,7 +260,7 @@ export default function OrganizePage() {
           onClick={() => setTab('projects')}
           className={cn(
             'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
-            tab === 'projects' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            tab === 'projects' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           Projects
@@ -261,7 +269,7 @@ export default function OrganizePage() {
           onClick={() => setTab('filing')}
           className={cn(
             'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
-            tab === 'filing' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+            tab === 'filing' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground hover:text-foreground',
           )}
         >
           Filing
@@ -273,40 +281,80 @@ export default function OrganizePage() {
           {/* Project Health */}
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="mb-3 flex items-center gap-4 text-xs font-medium text-muted-foreground">
-              <span>Active ({active.length})</span>
-              <span>Paused ({paused.length})</span>
-              <span>Archived ({archived.length})</span>
+              {loading ? (
+                <span>Loading projects...</span>
+              ) : (
+                <>
+                  <span>Active ({active.length})</span>
+                  <span>Paused ({paused.length})</span>
+                  <span>Archived ({archived.length})</span>
+                </>
+              )}
             </div>
 
             {loading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => <div key={i} className="h-10 animate-pulse rounded bg-secondary" />)}
               </div>
-            ) : (
-              <div className="space-y-1">
-                {active.map(p => (
-                  <div key={p.id} className="task-card flex flex-wrap items-center gap-2 rounded-lg px-3 py-3 sm:flex-nowrap sm:gap-3 sm:py-2.5">
-                    {getHealthDot(p)}
-                    <span className="flex-1 text-sm font-medium">{p.name}</span>
-                    <div className="flex w-full items-center gap-2 pl-6 sm:w-auto sm:pl-0">
-                      {p.category && (
-                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          {p.category}
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {p.openActionCount || 0} {(p.openActionCount || 0) === 1 ? 'task' : 'tasks'}
-                      </span>
-                      {p.lastActivityAt && (
-                        <span className="text-xs text-muted-foreground">
-                          {Math.floor((Date.now() - new Date(p.lastActivityAt).getTime()) / 86400000)}d ago
-                        </span>
-                      )}
+            ) : loadError ? (
+              <div className="rounded-lg bg-red-500/10 p-4 text-center">
+                <p className="text-sm text-red-400">{loadError}</p>
+                <button onClick={() => window.location.reload()} className="mt-2 text-xs text-primary hover:underline">Reload page</button>
+              </div>
+            ) : (() => {
+              // Group active projects by category
+              const grouped = new Map<string, Project[]>();
+              for (const p of active) {
+                const cat = p.category || 'other';
+                if (!grouped.has(cat)) grouped.set(cat, []);
+                grouped.get(cat)!.push(p);
+              }
+              const categoryOrder = ['work-primary', 'work-secondary', 'side-project', 'personal', 'homelab', 'travel', 'other'];
+              const sortedCategories = [...grouped.keys()].sort((a, b) => {
+                const ai = categoryOrder.indexOf(a);
+                const bi = categoryOrder.indexOf(b);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+              });
+              const categoryLabels: Record<string, string> = {
+                'work-primary': 'Work', 'work-secondary': 'Work (Secondary)', 'side-project': 'Side Projects',
+                'personal': 'Personal', 'homelab': 'Homelab', 'travel': 'Travel', 'other': 'Other',
+              };
+
+              return (
+              <div className="space-y-4">
+                {sortedCategories.map(cat => (
+                  <div key={cat}>
+                    {sortedCategories.length > 1 && (
+                      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                        {categoryLabels[cat] || cat.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                    {grouped.get(cat)!.map(p => (
+                      <div key={p.id} className="task-card flex flex-wrap items-center gap-2 rounded-lg px-3 py-3 sm:flex-nowrap sm:gap-3 sm:py-2.5">
+                        {getHealthDot(p)}
+                        <span className="flex-1 text-sm font-medium">{p.name}</span>
+                        <div className="flex w-full items-center gap-2 pl-6 sm:w-auto sm:pl-0">
+                          <span className="text-xs text-muted-foreground">
+                            {p.openActionCount || 0} {(p.openActionCount || 0) === 1 ? 'task' : 'tasks'}
+                          </span>
+                          {p.lastActivityAt && (() => {
+                            const days = Math.floor((Date.now() - new Date(p.lastActivityAt).getTime()) / 86400000);
+                            return (
+                              <span className="text-xs text-muted-foreground" title={`Last activity: ${new Date(p.lastActivityAt).toLocaleDateString()}`}>
+                                {days === 0 ? 'today' : days === 1 ? '1 day ago' : `${days} days ago`}
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    ))}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* GTD Integrity Warning: Projects with no next action */}
@@ -586,8 +634,9 @@ export default function OrganizePage() {
                           <div className="flex shrink-0 gap-2 sm:flex-col sm:gap-1.5">
                             <button
                               onClick={() => acceptSuggestion(s)}
+                              disabled={acceptingAll}
                               aria-label={`Accept filing suggestion for ${s.taskTitle}`}
-                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-500/20 px-3 py-2.5 text-xs font-medium text-green-400 hover:bg-green-500/30 sm:flex-initial sm:py-1.5"
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg bg-green-500/20 px-3 py-2.5 text-xs font-medium text-green-400 hover:bg-green-500/30 disabled:opacity-50 sm:flex-initial sm:py-1.5"
                             >
                               <Check className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> Accept
                             </button>

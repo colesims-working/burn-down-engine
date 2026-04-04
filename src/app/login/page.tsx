@@ -56,6 +56,7 @@ export default function LoginPage() {
               ref={passwordRef}
               id="password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"

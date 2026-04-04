@@ -1,5 +1,5 @@
 import { db, schema } from '@/lib/db/client';
-import { eq, and, ne, sql, asc, lte } from 'drizzle-orm';
+import { eq, and, ne, sql, asc, lte, isNotNull, isNull } from 'drizzle-orm';
 import { llmGenerateJSON } from '@/lib/llm/router';
 import { buildContext } from '@/lib/llm/context';
 import { RANK_TASKS_PROMPT } from '@/lib/llm/prompts/engage';
@@ -85,10 +85,24 @@ export async function buildEngageList(): Promise<{
   const deferredDue = await db.query.tasks.findMany({
     where: and(
       eq(schema.tasks.status, 'deferred'),
+      isNotNull(schema.tasks.dueDate),
       lte(schema.tasks.dueDate, today),
     ),
   });
   for (const t of deferredDue) {
+    await db.update(schema.tasks)
+      .set({ status: 'active', updatedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, t.id));
+  }
+
+  // Rescue deferred tasks stuck without a due date
+  const deferredStuck = await db.query.tasks.findMany({
+    where: and(
+      eq(schema.tasks.status, 'deferred'),
+      isNull(schema.tasks.dueDate),
+    ),
+  });
+  for (const t of deferredStuck) {
     await db.update(schema.tasks)
       .set({ status: 'active', updatedAt: new Date().toISOString() })
       .where(eq(schema.tasks.id, t.id));
@@ -222,6 +236,8 @@ export async function completeTask(taskId: string): Promise<schema.Task> {
     .where(eq(schema.tasks.id, taskId))
     .returning();
 
+  if (!updated[0]) throw new Error('Task not found');
+
   await db.insert(schema.taskHistory).values({
     taskId,
     action: 'completed',
@@ -231,7 +247,7 @@ export async function completeTask(taskId: string): Promise<schema.Task> {
   return updated[0];
 }
 
-export async function bumpTask(taskId: string, reason?: string): Promise<schema.Task & { antiPileUp?: boolean }> {
+export async function bumpTask(taskId: string, reason?: string): Promise<schema.Task & { antiPileUp?: boolean; syncWarning?: string }> {
   const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
   if (!task) throw new Error('Task not found');
 
@@ -249,10 +265,12 @@ export async function bumpTask(taskId: string, reason?: string): Promise<schema.
     .returning();
 
   // Sync due date to Todoist
+  let syncWarning: string | undefined;
   try {
     await syncTaskDueDate(updated[0]);
   } catch (e) {
-    console.error('Failed to sync bump due date to Todoist:', e);
+    syncWarning = `Failed to sync defer to Todoist: ${(e as Error).message}`;
+    console.error(syncWarning);
   }
 
   await db.insert(schema.taskHistory).values({
@@ -261,14 +279,15 @@ export async function bumpTask(taskId: string, reason?: string): Promise<schema.
     details: JSON.stringify({ reason, bumpCount: newBumpCount, deferredTo: tomorrow }),
   });
 
-  const result = updated[0] as schema.Task & { antiPileUp?: boolean };
+  const result = updated[0] as schema.Task & { antiPileUp?: boolean; syncWarning?: string };
   if (newBumpCount >= 3) {
     result.antiPileUp = true;
   }
+  if (syncWarning) result.syncWarning = syncWarning;
   return result;
 }
 
-export async function blockTask(taskId: string, blockerNote: string): Promise<schema.Task> {
+export async function blockTask(taskId: string, blockerNote: string): Promise<schema.Task & { syncWarning?: string }> {
   const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
   if (!task) throw new Error('Task not found');
 
@@ -287,13 +306,15 @@ export async function blockTask(taskId: string, blockerNote: string): Promise<sc
     .returning();
 
   // Sync to Todoist: update labels + add blocker comment
+  let syncWarning: string | undefined;
   try {
     await syncTaskLabels(updated[0]);
     if (task.todoistId) {
       await addTodoistComment(task.todoistId, `🚫 **Blocked:** ${blockerNote}`);
     }
   } catch (e) {
-    console.error('Failed to sync block to Todoist:', e);
+    syncWarning = `Failed to sync block to Todoist: ${(e as Error).message}`;
+    console.error(syncWarning);
   }
 
   await db.insert(schema.taskHistory).values({
@@ -302,7 +323,9 @@ export async function blockTask(taskId: string, blockerNote: string): Promise<sc
     details: JSON.stringify({ blocker: blockerNote }),
   });
 
-  return updated[0];
+  const result = updated[0] as schema.Task & { syncWarning?: string };
+  if (syncWarning) result.syncWarning = syncWarning;
+  return result;
 }
 
 export async function waitTask(taskId: string, waitingFor: string): Promise<schema.Task> {

@@ -1,0 +1,54 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: Checking.... Never synced" [ref=e11] [cursor=pointer]'
+        - button "More options" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - generic [ref=e23]:
+          - heading "Organize" [level=1] [ref=e24]
+          - paragraph [ref=e25]: Manage project health and task organization
+        - generic [ref=e26]:
+          - button "Projects" [ref=e27] [cursor=pointer]
+          - button "Filing" [ref=e28] [cursor=pointer]
+        - generic [ref=e29]:
+          - generic [ref=e31]:
+            - generic [ref=e32]: Active (0)
+            - generic [ref=e33]: Paused (0)
+            - generic [ref=e34]: Archived (0)
+          - generic [ref=e39]:
+            - generic [ref=e40]:
+              - heading "LLM Project Audit" [level=3] [ref=e41]
+              - button "Run Full Audit" [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+                - text: Run Full Audit
+            - generic [ref=e46]:
+              - textbox "Chat about project organization" [ref=e47]:
+                - /placeholder: Ask about a project...
+              - button "Send chat message" [disabled] [ref=e48]:
+                - img [ref=e49]
+    - tablist "Main navigation" [ref=e51]:
+      - generic [ref=e52]:
+        - tab "Inbox" [ref=e53] [cursor=pointer]:
+          - img [ref=e55]
+          - generic [ref=e58]: Inbox
+        - tab "Clarify" [ref=e59] [cursor=pointer]:
+          - img [ref=e61]
+          - generic [ref=e63]: Clarify
+        - tab "Organize" [selected] [ref=e64] [cursor=pointer]:
+          - img [ref=e66]
+          - generic [ref=e68]: Organize
+        - tab "Engage" [ref=e70] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: Engage
+        - tab "Reflect" [ref=e75] [cursor=pointer]:
+          - img [ref=e77]
+          - generic [ref=e79]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e80]

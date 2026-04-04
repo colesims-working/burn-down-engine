@@ -5,6 +5,9 @@ import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, Aler
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useUndo } from '@/components/providers/trust-provider';
+import { toast } from '@/hooks/use-toast';
+import type { TaskSnapshot } from '@/lib/undo/engine';
 
 interface InboxTask {
   id: string;
@@ -39,6 +42,9 @@ export default function InboxPage() {
     }
   }, []);
 
+  // Track tasks that have been locally removed (completed/deleted) during this session
+  const removedIdsRef = useRef<Set<string>>(new Set());
+
   // Auto-sync if stale (>5 min since last inbox sync)
   useEffect(() => {
     let cancelled = false;
@@ -65,9 +71,16 @@ export default function InboxPage() {
           });
           if (syncRes.ok && !cancelled) {
             const data = await syncRes.json();
-            // Use tasks returned from sync directly — skip extra fetch
             if (data.tasks) {
-              setTasks(data.tasks);
+              // Merge: keep local-only tasks (temp), exclude removed tasks
+              setTasks(prev => {
+                const syncedIds = new Set((data.tasks as InboxTask[]).map((t: InboxTask) => t.id));
+                const localOnly = prev.filter(t => t.id.startsWith('temp-') || !syncedIds.has(t.id));
+                const synced = (data.tasks as InboxTask[]).filter(
+                  (t: InboxTask) => !removedIdsRef.current.has(t.id)
+                );
+                return [...localOnly, ...synced];
+              });
               window.dispatchEvent(new Event('inbox-changed'));
             }
           }
@@ -80,6 +93,13 @@ export default function InboxPage() {
     return () => { cancelled = true; };
   }, [fetchTasks]);
 
+  // Re-fetch when tasks change elsewhere (e.g. undo)
+  useEffect(() => {
+    const handler = () => fetchTasks();
+    window.addEventListener('task-changed', handler);
+    return () => window.removeEventListener('task-changed', handler);
+  }, [fetchTasks]);
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -88,7 +108,11 @@ export default function InboxPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'sync-inbox' }),
       });
-      if (res.ok) await fetchTasks();
+      if (res.ok) {
+        // Clear removed IDs on manual sync — user is explicitly refreshing
+        removedIdsRef.current.clear();
+        await fetchTasks();
+      }
     } finally {
       setSyncing(false);
       window.dispatchEvent(new Event('inbox-changed'));
@@ -99,19 +123,35 @@ export default function InboxPage() {
     e.preventDefault();
     if (!quickAddText.trim()) return;
 
+    const text = quickAddText.trim();
+    // Optimistic: clear input and add placeholder immediately
+    setQuickAddText('');
+    const tempId = `temp-${Date.now()}`;
+    setTasks(prev => [{
+      id: tempId,
+      title: text,
+      originalText: text,
+      createdAt: new Date().toISOString(),
+    }, ...prev]);
+
     try {
       const res = await fetch('/api/todoist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'quick-add', content: quickAddText }),
+        body: JSON.stringify({ action: 'quick-add', content: text }),
       });
       if (res.ok) {
-        setQuickAddText('');
-        await fetchTasks();
+        const created = await res.json();
+        // Replace temp task with real one
+        setTasks(prev => prev.map(t => t.id === tempId ? { ...created } : t));
         window.dispatchEvent(new Event('inbox-changed'));
+      } else {
+        // Remove temp on failure
+        setTasks(prev => prev.filter(t => t.id !== tempId));
       }
     } catch (error) {
       console.error('Quick add failed:', error);
+      setTasks(prev => prev.filter(t => t.id !== tempId));
     }
   };
 
@@ -150,6 +190,7 @@ export default function InboxPage() {
       setRecording(true);
     } catch (error) {
       console.error('Microphone access denied:', error);
+      toast({ title: 'Microphone access denied', description: 'Please allow microphone access in your browser settings.', duration: 5000 });
     }
   };
 
@@ -177,19 +218,36 @@ export default function InboxPage() {
   };
 
   const addVoiceTasks = async () => {
+    let failed = 0;
     for (const task of voiceTasks) {
-      await fetch('/api/todoist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'quick-add', content: task.text }),
-      });
+      try {
+        const res = await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'quick-add', content: task.text }),
+        });
+        if (!res.ok) failed++;
+      } catch {
+        failed++;
+      }
+    }
+    if (failed > 0) {
+      toast({ title: 'Some tasks failed', description: `${failed} of ${voiceTasks.length} voice tasks could not be added.`, duration: 5000 });
     }
     setVoiceTasks([]);
     await fetchTasks();
+    window.dispatchEvent(new Event('inbox-changed'));
   };
+
+  const { pushUndo, isActionBusy, markBusy } = useUndo();
 
   // Two-Minute Rule: complete a task directly from inbox without full GTD workflow
   const quickComplete = async (taskId: string) => {
+    if (isActionBusy(taskId)) return;
+    markBusy(taskId);
+
+    const task = tasks.find(t => t.id === taskId);
+    removedIdsRef.current.add(taskId);
     setTasks(prev => prev.filter(t => t.id !== taskId));
     setSelected(prev => { const next = new Set(prev); next.delete(taskId); return next; });
     window.dispatchEvent(new Event('inbox-changed'));
@@ -199,6 +257,20 @@ export default function InboxPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'complete', taskId }),
       });
+
+      if (task) {
+        pushUndo({
+          action: 'completed',
+          taskId,
+          taskTitle: task.title,
+          previousSnapshot: {
+            status: 'inbox', priority: null, dueDate: null,
+            bumpCount: null, labels: null, blockerNote: null,
+            completedAt: null, todoistId: null,
+          },
+        });
+      }
+      window.dispatchEvent(new Event('task-changed'));
     } catch {
       // Revert on failure — re-fetch
       await fetchTasks();
@@ -215,11 +287,20 @@ export default function InboxPage() {
     const db = new Date(b.createdAt).getTime();
     return sortNewestFirst ? db - da : da - db;
   });
+  // Microphone cleanup on unmount (BUG-034)
+  useEffect(() => {
+    return () => {
+      if (mediaRecorder.current && mediaRecorder.current.state !== 'inactive') {
+        mediaRecorder.current.stop();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (tasks.length === 0) return;
+      if (sortedTasks.length === 0) return;
 
       switch (e.key) {
         case 'j':
@@ -238,11 +319,14 @@ export default function InboxPage() {
           e.preventDefault();
           selectAll();
           break;
+        default:
+          // Let browser handle other keys (End, Home, PageDown, etc.)
+          return;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [tasks, focusIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sortedTasks, focusIdx]);
 
   return (
     <div>
@@ -275,7 +359,12 @@ export default function InboxPage() {
           <button
             type="submit"
             disabled={!quickAddText.trim()}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+            className={cn(
+              'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-colors',
+              quickAddText.trim()
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-secondary text-muted-foreground/40 cursor-not-allowed',
+            )}
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -386,13 +475,11 @@ export default function InboxPage() {
                   onClick={() => setSortNewestFirst(prev => !prev)}
                   className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-foreground sm:text-xs"
                   aria-label={`Sort by ${sortNewestFirst ? 'oldest first' : 'newest first'}`}
+                  title={`Sort by date added (${sortNewestFirst ? 'newest first' : 'oldest first'})`}
                 >
                   <ArrowUpDown className="h-3 w-3" />
                   {sortNewestFirst ? 'Newest' : 'Oldest'}
                 </button>
-                <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
-                  j/k navigate · space select · a select all
-                </span>
               </div>
               {selected.size > 0 && (
                 <a
@@ -404,6 +491,9 @@ export default function InboxPage() {
                   <ArrowRight className="h-3.5 w-3.5" />
                 </a>
               )}
+            </div>
+            <div className="hidden text-[10px] text-muted-foreground/40 sm:block">
+              j/k navigate · space select · a select all
             </div>
             {selected.size > 0 && (
               <a
@@ -444,7 +534,7 @@ export default function InboxPage() {
                 >
                   <Check className="h-4 w-4" />
                 </button>
-                <span className="hidden shrink-0 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 sm:inline">
+                <span className="hidden shrink-0 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 sm:inline" title={`Added ${new Date(task.createdAt).toLocaleDateString()}`}>
                   {new Date(task.createdAt).toLocaleDateString()}
                 </span>
               </li>

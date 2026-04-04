@@ -1,0 +1,34 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: Checking.... Never synced" [ref=e11] [cursor=pointer]'
+        - button "More options" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+    - main [ref=e19]:
+      - generic [ref=e23]:
+        - heading "Clarify" [level=1] [ref=e24]
+        - paragraph [ref=e25]: Transform messy captures into perfect next actions
+    - tablist "Main navigation" [ref=e30]:
+      - generic [ref=e31]:
+        - tab "Inbox" [ref=e32] [cursor=pointer]:
+          - img [ref=e34]
+          - generic [ref=e37]: Inbox
+        - tab "Clarify" [selected] [ref=e38] [cursor=pointer]:
+          - img [ref=e40]
+          - generic [ref=e42]: Clarify
+        - tab "Organize" [ref=e44] [cursor=pointer]:
+          - img [ref=e46]
+          - generic [ref=e48]: Organize
+        - tab "Engage" [ref=e49] [cursor=pointer]:
+          - img [ref=e51]
+          - generic [ref=e53]: Engage
+        - tab "Reflect" [ref=e54] [cursor=pointer]:
+          - img [ref=e56]
+          - generic [ref=e58]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e59]

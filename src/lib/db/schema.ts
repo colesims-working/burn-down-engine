@@ -233,6 +233,25 @@ export const llmInteractions = sqliteTable('llm_interactions', {
 }));
 
 // ============================================================
+// APP LOG (Diagnostics)
+// ============================================================
+
+export const appLog = sqliteTable('app_log', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  level: text('level', { enum: ['info', 'warn', 'error'] }).notNull().default('info'),
+  category: text('category', {
+    enum: ['sync', 'task', 'llm', 'auth', 'system'],
+  }).notNull(),
+  message: text('message').notNull(),
+  details: text('details'), // JSON string for structured context
+  timestamp: text('timestamp').default(sql`(datetime('now'))`),
+}, (table) => ({
+  categoryIdx: index('idx_app_log_category').on(table.category),
+  timestampIdx: index('idx_app_log_timestamp').on(table.timestamp),
+  levelIdx: index('idx_app_log_level').on(table.level),
+}));
+
+// ============================================================
 // SYNC STATE
 // ============================================================
 
@@ -257,6 +276,7 @@ export const appSettings = sqliteTable('app_settings', {
   // JSON array of "provider:modelId" strings that the admin has disabled
   disabledModels: text('disabled_models'),
   autoApproveThreshold: real('auto_approve_threshold').default(0.8),
+  monthlyBudget: real('monthly_budget'), // USD budget limit, null = no limit
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 });
 
@@ -273,3 +293,4 @@ export type KnowledgeEntry = typeof knowledgeEntries.$inferSelect;
 export type TaskHistoryEntry = typeof taskHistory.$inferSelect;
 export type DailyReview = typeof dailyReviews.$inferSelect;
 export type AppSettings = typeof appSettings.$inferSelect;
+export type AppLogEntry = typeof appLog.$inferSelect;

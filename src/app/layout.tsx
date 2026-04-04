@@ -4,6 +4,9 @@ import { GeistMono } from 'geist/font/mono';
 import './globals.css';
 import { Sidebar } from '@/components/nav/sidebar';
 import { MobileTopBar, MobileBottomTabs } from '@/components/nav/mobile-nav';
+import { TrustProvider } from '@/components/providers/trust-provider';
+import { Toaster } from '@/components/shared/toaster';
+import { UndoIndicator } from '@/components/shared/undo-indicator';
 import { isAuthenticated } from '@/lib/auth/session';
 
 export const metadata: Metadata = {
@@ -28,16 +31,20 @@ export default async function RootLayout({
     <html lang="en" className="dark">
       <body suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         {authed ? (
-          <div className="flex h-screen flex-col md:flex-row">
-            <Sidebar />
-            <MobileTopBar />
-            <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0">
-              <div className="mx-auto max-w-5xl px-4 py-4 md:px-6 md:py-8">
-                {children}
-              </div>
-            </main>
-            <MobileBottomTabs />
-          </div>
+          <TrustProvider>
+            <div className="flex h-screen flex-col md:flex-row">
+              <Sidebar />
+              <MobileTopBar />
+              <main className="flex-1 overflow-y-auto pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0">
+                <div className="mx-auto max-w-5xl px-4 py-4 md:px-6 md:py-8">
+                  {children}
+                </div>
+              </main>
+              <MobileBottomTabs />
+            </div>
+            <Toaster />
+            <UndoIndicator />
+          </TrustProvider>
         ) : (
           children
         )}

@@ -1,0 +1,965 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: 444 issues. Synced just now" [ref=e62] [cursor=pointer]'
+        - button "More options" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - heading "Engage" [level=1] [ref=e24]
+            - paragraph [ref=e25]: Execute. One task at a time.
+          - button "Urgent Interrupt" [ref=e64] [cursor=pointer]:
+            - img [ref=e65]
+            - text: Urgent Interrupt
+        - generic [ref=e69]: 0/17
+        - generic [ref=e71]:
+          - img [ref=e72]
+          - button "📋 All" [ref=e74] [cursor=pointer]:
+            - generic [ref=e75]: 📋
+            - text: All
+          - button "💻 @computer" [ref=e76] [cursor=pointer]:
+            - generic [ref=e77]: 💻
+            - text: "@computer"
+          - button "📞 @calls" [ref=e78] [cursor=pointer]:
+            - generic [ref=e79]: 📞
+            - text: "@calls"
+          - button "🏢 @office" [ref=e80] [cursor=pointer]:
+            - generic [ref=e81]: 🏢
+            - text: "@office"
+          - button "🏠 @home" [ref=e82] [cursor=pointer]:
+            - generic [ref=e83]: 🏠
+            - text: "@home"
+          - button "🚗 @errands" [ref=e84] [cursor=pointer]:
+            - generic [ref=e85]: 🚗
+            - text: "@errands"
+          - button "⏳ @waiting" [ref=e86] [cursor=pointer]:
+            - generic [ref=e87]: ⏳
+            - text: "@waiting"
+        - generic [ref=e88]:
+          - generic [ref=e90]: ► Next Up (10 of 17)
+          - generic [ref=e91]:
+            - generic [ref=e92]:
+              - generic "Priority P1" [ref=e93]:
+                - img [ref=e94]
+                - text: P1
+              - generic [ref=e98]:
+                - generic [ref=e99]: Email Paula regarding Principal role vacancy
+                - generic [ref=e100]: Draft and send email to Paula expressing interest in filling Evgeny's former Principal position to facilitate promotion
+                - generic [ref=e101]:
+                  - 'generic "Energy: High" [ref=e102]':
+                    - img [ref=e103]
+                    - text: High
+                  - 'generic "Estimated time: 20m" [ref=e105]':
+                    - img [ref=e106]
+                    - text: 20m
+                  - generic [ref=e109]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e110]:
+              - button "Done" [ref=e111] [cursor=pointer]:
+                - img [ref=e112]
+                - text: Done
+              - button "Defer" [ref=e114] [cursor=pointer]:
+                - img [ref=e115]
+                - text: Defer
+              - button "Block" [ref=e117] [cursor=pointer]:
+                - img [ref=e118]
+                - text: Block
+          - generic [ref=e121]:
+            - generic [ref=e122]:
+              - generic "Priority P2" [ref=e123]:
+                - img [ref=e124]
+                - text: P2
+              - generic [ref=e127]:
+                - generic [ref=e128]: Calculate and Report Business Impact of Fuchen's Model Improvements
+                - generic [ref=e129]: Draft a Kusto query to determine daily production execution frequency for the target model
+                - generic [ref=e130]:
+                  - 'generic "Energy: High" [ref=e131]':
+                    - img [ref=e132]
+                    - text: High
+                  - 'generic "Estimated time: 1.5h" [ref=e134]':
+                    - img [ref=e135]
+                    - text: 1.5h
+                  - generic [ref=e138]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e139]:
+              - button "Done" [ref=e140] [cursor=pointer]:
+                - img [ref=e141]
+                - text: Done
+              - button "Defer" [ref=e143] [cursor=pointer]:
+                - img [ref=e144]
+                - text: Defer
+              - button "Block" [ref=e146] [cursor=pointer]:
+                - img [ref=e147]
+                - text: Block
+          - generic [ref=e150]:
+            - generic [ref=e151]:
+              - generic "Priority P2" [ref=e152]:
+                - img [ref=e153]
+                - text: P2
+              - generic [ref=e156]:
+                - generic [ref=e157]: Prepare for Capital One Fraud Detection Hiring Manager Screen
+                - generic [ref=e158]: Review the Capital One Fraud Detection team's recent public whitepapers and prepare three situational examples using the STAR method for common fraud-prevention interview questions.
+                - generic [ref=e159]:
+                  - 'generic "Energy: High" [ref=e160]':
+                    - img [ref=e161]
+                    - text: High
+                  - 'generic "Estimated time: 1.5h" [ref=e163]':
+                    - img [ref=e164]
+                    - text: 1.5h
+                  - generic [ref=e167]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e168]:
+              - button "Done" [ref=e169] [cursor=pointer]:
+                - img [ref=e170]
+                - text: Done
+              - button "Defer" [ref=e172] [cursor=pointer]:
+                - img [ref=e173]
+                - text: Defer
+              - button "Block" [ref=e175] [cursor=pointer]:
+                - img [ref=e176]
+                - text: Block
+          - generic [ref=e179]:
+            - generic [ref=e180]:
+              - generic "Priority P2" [ref=e181]:
+                - img [ref=e182]
+                - text: P2
+              - generic [ref=e185]:
+                - generic [ref=e186]: Perform Comprehensive System Integration and Functionality Stress Test
+                - generic [ref=e187]: Execute a full-stack diagnostic test suite on the 'OneSOC Agent' environment, including simulating edge-case API responses and validating end-to-end data flow to Kusto to ensure system reliability.
+                - generic [ref=e188]:
+                  - 'generic "Energy: High" [ref=e189]':
+                    - img [ref=e190]
+                    - text: High
+                  - 'generic "Estimated time: 1.5h" [ref=e192]':
+                    - img [ref=e193]
+                    - text: 1.5h
+                  - generic [ref=e196]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e197]:
+              - button "Done" [ref=e198] [cursor=pointer]:
+                - img [ref=e199]
+                - text: Done
+              - button "Defer" [ref=e201] [cursor=pointer]:
+                - img [ref=e202]
+                - text: Defer
+              - button "Block" [ref=e204] [cursor=pointer]:
+                - img [ref=e205]
+                - text: Block
+          - generic [ref=e208]:
+            - generic [ref=e209]:
+              - generic "Priority P2" [ref=e210]:
+                - img [ref=e211]
+                - text: P2
+              - generic [ref=e214]:
+                - generic [ref=e215]: Review Bhakti's POR Document for Verdict Agent
+                - generic [ref=e216]: Read the Verdict Agent POR document provided by Bhakti, add comments on technical feasibility, and share feedback with her.
+                - generic [ref=e217]:
+                  - 'generic "Energy: High" [ref=e218]':
+                    - img [ref=e219]
+                    - text: High
+                  - 'generic "Estimated time: 45m" [ref=e221]':
+                    - img [ref=e222]
+                    - text: 45m
+                  - generic [ref=e225]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e226]:
+              - button "Done" [ref=e227] [cursor=pointer]:
+                - img [ref=e228]
+                - text: Done
+              - button "Defer" [ref=e230] [cursor=pointer]:
+                - img [ref=e231]
+                - text: Defer
+              - button "Block" [ref=e233] [cursor=pointer]:
+                - img [ref=e234]
+                - text: Block
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - generic "Priority P2" [ref=e239]:
+                - img [ref=e240]
+                - text: P2
+              - generic [ref=e243]:
+                - generic [ref=e244]: Reply to Mohit's comments on Verdict Agent service integration document
+                - generic [ref=e245]: Review open comments in the Verdict Agent integration document and draft final responses for Mohit
+                - generic [ref=e246]:
+                  - 'generic "Energy: Med" [ref=e247]':
+                    - img [ref=e248]
+                    - text: Med
+                  - 'generic "Estimated time: 45m" [ref=e250]':
+                    - img [ref=e251]
+                    - text: 45m
+                  - generic [ref=e254]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e255]:
+              - button "Done" [ref=e256] [cursor=pointer]:
+                - img [ref=e257]
+                - text: Done
+              - button "Defer" [ref=e259] [cursor=pointer]:
+                - img [ref=e260]
+                - text: Defer
+              - button "Block" [ref=e262] [cursor=pointer]:
+                - img [ref=e263]
+                - text: Block
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - generic "Priority P2" [ref=e268]:
+                - img [ref=e269]
+                - text: P2
+              - generic [ref=e272]:
+                - generic [ref=e273]: Scope remaining TODOs from Verdict Agent integration meeting
+                - generic [ref=e274]: Review Verdict Agent Service Integration document, identify outstanding TODOs, and create individual action items for each
+                - generic [ref=e275]:
+                  - 'generic "Energy: Med" [ref=e276]':
+                    - img [ref=e277]
+                    - text: Med
+                  - 'generic "Estimated time: 45m" [ref=e279]':
+                    - img [ref=e280]
+                    - text: 45m
+                  - generic [ref=e283]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e284]:
+              - button "Done" [ref=e285] [cursor=pointer]:
+                - img [ref=e286]
+                - text: Done
+              - button "Defer" [ref=e288] [cursor=pointer]:
+                - img [ref=e289]
+                - text: Defer
+              - button "Block" [ref=e291] [cursor=pointer]:
+                - img [ref=e292]
+                - text: Block
+          - generic [ref=e295]:
+            - generic [ref=e296]:
+              - generic "Priority P2" [ref=e297]:
+                - img [ref=e298]
+                - text: P2
+              - generic [ref=e301]:
+                - generic [ref=e302]: Define next development sprint for Burn-Down Engine
+                - generic [ref=e303]: Draft a roadmap outlining core features, bug fixes, and performance milestones for the upcoming two-week Burn-Down Engine sprint
+                - generic [ref=e304]:
+                  - 'generic "Energy: High" [ref=e305]':
+                    - img [ref=e306]
+                    - text: High
+                  - 'generic "Estimated time: 1h" [ref=e308]':
+                    - img [ref=e309]
+                    - text: 1h
+                  - generic [ref=e312]: "[\"work\",\"deep-work\"]"
+            - generic [ref=e313]:
+              - button "Done" [ref=e314] [cursor=pointer]:
+                - img [ref=e315]
+                - text: Done
+              - button "Defer" [ref=e317] [cursor=pointer]:
+                - img [ref=e318]
+                - text: Defer
+              - button "Block" [ref=e320] [cursor=pointer]:
+                - img [ref=e321]
+                - text: Block
+          - generic [ref=e324]:
+            - generic [ref=e325]:
+              - generic "Priority P2" [ref=e326]:
+                - img [ref=e327]
+                - text: P2
+              - generic [ref=e330]:
+                - generic [ref=e331]: Gather PTA technical details
+                - generic [ref=e332]: Message Eden for the latest branch name and Python entry point
+                - generic [ref=e334]: "[]"
+            - generic [ref=e335]:
+              - button "Done" [ref=e336] [cursor=pointer]:
+                - img [ref=e337]
+                - text: Done
+              - button "Defer" [ref=e339] [cursor=pointer]:
+                - img [ref=e340]
+                - text: Defer
+              - button "Block" [ref=e342] [cursor=pointer]:
+                - img [ref=e343]
+                - text: Block
+          - generic [ref=e346]:
+            - generic [ref=e347]:
+              - generic "Priority P2" [ref=e348]:
+                - img [ref=e349]
+                - text: P2
+              - generic [ref=e352]:
+                - generic [ref=e353]: Learn PTA manual execution
+                - generic [ref=e354]: Clone the branch and run the Python entry point locally to document manual execution steps
+                - generic [ref=e356]: "[]"
+            - generic [ref=e357]:
+              - button "Done" [ref=e358] [cursor=pointer]:
+                - img [ref=e359]
+                - text: Done
+              - button "Defer" [ref=e361] [cursor=pointer]:
+                - img [ref=e362]
+                - text: Defer
+              - button "Block" [ref=e364] [cursor=pointer]:
+                - img [ref=e365]
+                - text: Block
+        - generic [ref=e368]:
+          - generic [ref=e369]:
+            - heading "📋 Should Do" [level=3] [ref=e370]
+            - generic [ref=e371]:
+              - generic [ref=e373]:
+                - 'button "Complete task: Calculate and Report Business Impact of Fuchen''s Model Improvements" [ref=e374] [cursor=pointer]':
+                  - img [ref=e375]
+                - generic [ref=e377]:
+                  - generic [ref=e378]: Calculate and Report Business Impact of Fuchen's Model Improvements
+                  - generic [ref=e379]: Draft a Kusto query to determine daily production execution frequency for the target model
+                  - generic [ref=e380]:
+                    - generic "Priority P2" [ref=e381]:
+                      - img [ref=e382]
+                      - text: P2
+                    - 'generic "Energy: High" [ref=e385]':
+                      - img [ref=e386]
+                      - text: High
+                    - 'generic "Estimated time: 1.5h" [ref=e388]':
+                      - img [ref=e389]
+                      - text: 1.5h
+                - button [ref=e392] [cursor=pointer]:
+                  - img [ref=e393]
+              - generic [ref=e396]:
+                - 'button "Complete task: Prepare for Capital One Fraud Detection Hiring Manager Screen" [ref=e397] [cursor=pointer]':
+                  - img [ref=e398]
+                - generic [ref=e400]:
+                  - generic [ref=e401]: Prepare for Capital One Fraud Detection Hiring Manager Screen
+                  - generic [ref=e402]: Review the Capital One Fraud Detection team's recent public whitepapers and prepare three situational examples using the STAR method for common fraud-prevention interview questions.
+                  - generic [ref=e403]:
+                    - generic "Priority P2" [ref=e404]:
+                      - img [ref=e405]
+                      - text: P2
+                    - 'generic "Energy: High" [ref=e408]':
+                      - img [ref=e409]
+                      - text: High
+                    - 'generic "Estimated time: 1.5h" [ref=e411]':
+                      - img [ref=e412]
+                      - text: 1.5h
+                - button [ref=e415] [cursor=pointer]:
+                  - img [ref=e416]
+              - generic [ref=e419]:
+                - 'button "Complete task: Perform Comprehensive System Integration and Functionality Stress Test" [ref=e420] [cursor=pointer]':
+                  - img [ref=e421]
+                - generic [ref=e423]:
+                  - generic [ref=e424]: Perform Comprehensive System Integration and Functionality Stress Test
+                  - generic [ref=e425]: Execute a full-stack diagnostic test suite on the 'OneSOC Agent' environment, including simulating edge-case API responses and validating end-to-end data flow to Kusto to ensure system reliability.
+                  - generic [ref=e426]:
+                    - generic "Priority P2" [ref=e427]:
+                      - img [ref=e428]
+                      - text: P2
+                    - 'generic "Energy: High" [ref=e431]':
+                      - img [ref=e432]
+                      - text: High
+                    - 'generic "Estimated time: 1.5h" [ref=e434]':
+                      - img [ref=e435]
+                      - text: 1.5h
+                - button [ref=e438] [cursor=pointer]:
+                  - img [ref=e439]
+              - generic [ref=e442]:
+                - 'button "Complete task: Review Bhakti''s POR Document for Verdict Agent" [ref=e443] [cursor=pointer]':
+                  - img [ref=e444]
+                - generic [ref=e446]:
+                  - generic [ref=e447]: Review Bhakti's POR Document for Verdict Agent
+                  - generic [ref=e448]: Read the Verdict Agent POR document provided by Bhakti, add comments on technical feasibility, and share feedback with her.
+                  - generic [ref=e449]:
+                    - generic "Priority P2" [ref=e450]:
+                      - img [ref=e451]
+                      - text: P2
+                    - 'generic "Energy: High" [ref=e454]':
+                      - img [ref=e455]
+                      - text: High
+                    - 'generic "Estimated time: 45m" [ref=e457]':
+                      - img [ref=e458]
+                      - text: 45m
+                - button [ref=e461] [cursor=pointer]:
+                  - img [ref=e462]
+              - generic [ref=e465]:
+                - 'button "Complete task: Reply to Mohit''s comments on Verdict Agent service integration document" [ref=e466] [cursor=pointer]':
+                  - img [ref=e467]
+                - generic [ref=e469]:
+                  - generic [ref=e470]: Reply to Mohit's comments on Verdict Agent service integration document
+                  - generic [ref=e471]: Review open comments in the Verdict Agent integration document and draft final responses for Mohit
+                  - generic [ref=e472]:
+                    - generic "Priority P2" [ref=e473]:
+                      - img [ref=e474]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e477]':
+                      - img [ref=e478]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e480]':
+                      - img [ref=e481]
+                      - text: 45m
+                - button [ref=e484] [cursor=pointer]:
+                  - img [ref=e485]
+              - generic [ref=e488]:
+                - 'button "Complete task: Scope remaining TODOs from Verdict Agent integration meeting" [ref=e489] [cursor=pointer]':
+                  - img [ref=e490]
+                - generic [ref=e492]:
+                  - generic [ref=e493]: Scope remaining TODOs from Verdict Agent integration meeting
+                  - generic [ref=e494]: Review Verdict Agent Service Integration document, identify outstanding TODOs, and create individual action items for each
+                  - generic [ref=e495]:
+                    - generic "Priority P2" [ref=e496]:
+                      - img [ref=e497]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e500]':
+                      - img [ref=e501]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e503]':
+                      - img [ref=e504]
+                      - text: 45m
+                - button [ref=e507] [cursor=pointer]:
+                  - img [ref=e508]
+              - generic [ref=e511]:
+                - 'button "Complete task: Define next development sprint for Burn-Down Engine" [ref=e512] [cursor=pointer]':
+                  - img [ref=e513]
+                - generic [ref=e515]:
+                  - generic [ref=e516]: Define next development sprint for Burn-Down Engine
+                  - generic [ref=e517]: Draft a roadmap outlining core features, bug fixes, and performance milestones for the upcoming two-week Burn-Down Engine sprint
+                  - generic [ref=e518]:
+                    - generic "Priority P2" [ref=e519]:
+                      - img [ref=e520]
+                      - text: P2
+                    - 'generic "Energy: High" [ref=e523]':
+                      - img [ref=e524]
+                      - text: High
+                    - 'generic "Estimated time: 1h" [ref=e526]':
+                      - img [ref=e527]
+                      - text: 1h
+                - button [ref=e530] [cursor=pointer]:
+                  - img [ref=e531]
+              - generic [ref=e534]:
+                - 'button "Complete task: Gather PTA technical details" [ref=e535] [cursor=pointer]':
+                  - img [ref=e536]
+                - generic [ref=e538]:
+                  - generic [ref=e539]: Gather PTA technical details
+                  - generic [ref=e540]: Message Eden for the latest branch name and Python entry point
+                  - generic "Priority P2" [ref=e542]:
+                    - img [ref=e543]
+                    - text: P2
+                - button [ref=e546] [cursor=pointer]:
+                  - img [ref=e547]
+              - generic [ref=e550]:
+                - 'button "Complete task: Learn PTA manual execution" [ref=e551] [cursor=pointer]':
+                  - img [ref=e552]
+                - generic [ref=e554]:
+                  - generic [ref=e555]: Learn PTA manual execution
+                  - generic [ref=e556]: Clone the branch and run the Python entry point locally to document manual execution steps
+                  - generic "Priority P2" [ref=e558]:
+                    - img [ref=e559]
+                    - text: P2
+                - button [ref=e562] [cursor=pointer]:
+                  - img [ref=e563]
+              - generic [ref=e566]:
+                - 'button "Complete task: Define PTA monitoring protocols" [ref=e567] [cursor=pointer]':
+                  - img [ref=e568]
+                - generic [ref=e570]:
+                  - generic [ref=e571]: Define PTA monitoring protocols
+                  - generic [ref=e572]: Document maintenance and monitoring requirements for the PTA agent
+                  - generic "Priority P2" [ref=e574]:
+                    - img [ref=e575]
+                    - text: P2
+                - button [ref=e578] [cursor=pointer]:
+                  - img [ref=e579]
+              - generic [ref=e582]:
+                - 'button "Complete task: Audit Workout Schedule for Spacing Conflicts" [ref=e583] [cursor=pointer]':
+                  - img [ref=e584]
+                - generic [ref=e586]:
+                  - generic [ref=e587]: Audit Workout Schedule for Spacing Conflicts
+                  - generic [ref=e588]: Review the current exercise calendar to identify back-to-back day overlaps and Day 1/Day 5 rotation conflicts based on the current routine frequency.
+                  - generic [ref=e589]:
+                    - generic "Priority P2" [ref=e590]:
+                      - img [ref=e591]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e594]':
+                      - img [ref=e595]
+                      - text: Med
+                    - 'generic "Estimated time: 20m" [ref=e597]':
+                      - img [ref=e598]
+                      - text: 20m
+                - button [ref=e601] [cursor=pointer]:
+                  - img [ref=e602]
+              - generic [ref=e605]:
+                - 'button "Complete task: Fix LCXP meal calculation logic in Cameron''s spreadsheet" [ref=e606] [cursor=pointer]':
+                  - img [ref=e607]
+                - generic [ref=e609]:
+                  - generic [ref=e610]: Fix LCXP meal calculation logic in Cameron's spreadsheet
+                  - generic [ref=e611]: Review the formulas in Cameron's spreadsheet and implement an IF/OR condition to default 'LC' meal costs to 'XP' when the 'LC' option is missing
+                  - generic [ref=e612]:
+                    - generic "Priority P2" [ref=e613]:
+                      - img [ref=e614]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e617]':
+                      - img [ref=e618]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e620]':
+                      - img [ref=e621]
+                      - text: 45m
+                - button [ref=e624] [cursor=pointer]:
+                  - img [ref=e625]
+              - generic [ref=e628]:
+                - 'button "Complete task: Review ER bills and insurance EOBs" [ref=e629] [cursor=pointer]':
+                  - img [ref=e630]
+                - generic [ref=e632]:
+                  - generic [ref=e633]: Review ER bills and insurance EOBs
+                  - generic [ref=e634]: Reconcile ER bills against insurance Explanation of Benefits (EOB) statements to verify provider charges match covered amounts and identify any outstanding balances
+                  - generic [ref=e635]:
+                    - generic "Priority P2" [ref=e636]:
+                      - img [ref=e637]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e640]':
+                      - img [ref=e641]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e643]':
+                      - img [ref=e644]
+                      - text: 45m
+                - button [ref=e647] [cursor=pointer]:
+                  - img [ref=e648]
+              - generic [ref=e651]:
+                - 'button "Complete task: Follow up with Pokemon Center regarding stolen package" [ref=e652] [cursor=pointer]':
+                  - img [ref=e653]
+                - generic [ref=e655]:
+                  - generic [ref=e656]: Follow up with Pokemon Center regarding stolen package
+                  - generic [ref=e657]: Locate order confirmation email, document the tracking status, and submit a support ticket via the Pokemon Center 'Contact Us' portal to initiate a claim for the missing package.
+                  - generic [ref=e658]:
+                    - generic "Priority P2" [ref=e659]:
+                      - img [ref=e660]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e663]':
+                      - img [ref=e664]
+                      - text: Med
+                    - 'generic "Estimated time: 20m" [ref=e666]':
+                      - img [ref=e667]
+                      - text: 20m
+                - button [ref=e670] [cursor=pointer]:
+                  - img [ref=e671]
+              - generic [ref=e674]:
+                - 'button "Complete task: Select and Order Second Backyard Camera" [ref=e675] [cursor=pointer]':
+                  - img [ref=e676]
+                - generic [ref=e678]:
+                  - generic [ref=e679]: Select and Order Second Backyard Camera
+                  - generic [ref=e680]: Compare Reolink camera models compatible with existing light fixture wiring and place order on website
+                  - generic [ref=e681]:
+                    - generic "Priority P2" [ref=e682]:
+                      - img [ref=e683]
+                      - text: P2
+                    - 'generic "Energy: Med" [ref=e686]':
+                      - img [ref=e687]
+                      - text: Med
+                    - 'generic "Estimated time: 20m" [ref=e689]':
+                      - img [ref=e690]
+                      - text: 20m
+                - button [ref=e693] [cursor=pointer]:
+                  - img [ref=e694]
+              - generic [ref=e697]:
+                - 'button "Complete task: Prepare home for guests" [ref=e698] [cursor=pointer]':
+                  - img [ref=e699]
+                - generic [ref=e701]:
+                  - generic [ref=e702]: Prepare home for guests
+                  - generic [ref=e703]: Charge the Bluetooth speaker and move beer to the freezer or cooler
+                  - generic [ref=e704]:
+                    - generic "Priority P2" [ref=e705]:
+                      - img [ref=e706]
+                      - text: P2
+                    - 'generic "Energy: Low" [ref=e709]':
+                      - img [ref=e710]
+                      - text: Low
+                    - 'generic "Estimated time: 15m" [ref=e713]':
+                      - img [ref=e714]
+                      - text: 15m
+                - button [ref=e717] [cursor=pointer]:
+                  - img [ref=e718]
+          - generic [ref=e720]:
+            - heading "📌 This Week" [level=3] [ref=e721]
+            - generic [ref=e722]:
+              - generic [ref=e724]:
+                - 'button "Complete task: Learn n8n workflow automation platform" [ref=e725] [cursor=pointer]':
+                  - img [ref=e726]
+                - generic [ref=e728]:
+                  - generic [ref=e729]: Learn n8n workflow automation platform
+                  - generic [ref=e730]: Review n8n 'Getting Started' documentation and complete the basic workflow tutorial
+                  - generic [ref=e731]:
+                    - generic "Priority P3" [ref=e732]:
+                      - img [ref=e733]
+                      - text: P3
+                    - 'generic "Energy: High" [ref=e735]':
+                      - img [ref=e736]
+                      - text: High
+                    - 'generic "Estimated time: 1.5h" [ref=e738]':
+                      - img [ref=e739]
+                      - text: 1.5h
+                - button [ref=e742] [cursor=pointer]:
+                  - img [ref=e743]
+              - generic [ref=e746]:
+                - 'button "Complete task: Replace trail cam batteries and reposition" [ref=e747] [cursor=pointer]':
+                  - img [ref=e748]
+                - generic [ref=e750]:
+                  - generic [ref=e751]: Replace trail cam batteries and reposition
+                  - generic [ref=e752]: Swap old batteries for fresh ones in the trail cam and move the device to a new monitoring location
+                  - generic [ref=e753]:
+                    - generic "Priority P3" [ref=e754]:
+                      - img [ref=e755]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e757]':
+                      - img [ref=e758]
+                      - text: Med
+                    - 'generic "Estimated time: 20m" [ref=e760]':
+                      - img [ref=e761]
+                      - text: 20m
+                - button [ref=e764] [cursor=pointer]:
+                  - img [ref=e765]
+              - generic [ref=e768]:
+                - 'button "Complete task: Continue development of Burn-Down Engine" [ref=e769] [cursor=pointer]':
+                  - img [ref=e770]
+                - generic [ref=e772]:
+                  - generic [ref=e773]: Continue development of Burn-Down Engine
+                  - generic [ref=e774]: Review current codebase state and resume implementation of the next prioritized feature or fix in the backlog
+                  - generic [ref=e775]:
+                    - generic "Priority P3" [ref=e776]:
+                      - img [ref=e777]
+                      - text: P3
+                    - 'generic "Energy: High" [ref=e779]':
+                      - img [ref=e780]
+                      - text: High
+                    - 'generic "Estimated time: 1h" [ref=e782]':
+                      - img [ref=e783]
+                      - text: 1h
+                - button [ref=e786] [cursor=pointer]:
+                  - img [ref=e787]
+              - generic [ref=e790]:
+                - 'button "Complete task: Complete Configuration of Readarr, Calibre, and Calibre-Web" [ref=e791] [cursor=pointer]':
+                  - img [ref=e792]
+                - generic [ref=e794]:
+                  - generic [ref=e795]: Complete Configuration of Readarr, Calibre, and Calibre-Web
+                  - generic [ref=e796]: Configure library paths and sync settings across Readarr, Calibre, and Calibre-Web to restore content management functionality
+                  - generic [ref=e797]:
+                    - generic "Priority P3" [ref=e798]:
+                      - img [ref=e799]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e801]':
+                      - img [ref=e802]
+                      - text: Med
+                    - 'generic "Estimated time: 1.5h" [ref=e804]':
+                      - img [ref=e805]
+                      - text: 1.5h
+                - button [ref=e808] [cursor=pointer]:
+                  - img [ref=e809]
+              - generic [ref=e812]:
+                - 'button "Complete task: Tune Quality Profiles for Sonarr and Radarr" [ref=e813] [cursor=pointer]':
+                  - img [ref=e814]
+                - generic [ref=e816]:
+                  - generic [ref=e817]: Tune Quality Profiles for Sonarr and Radarr
+                  - generic [ref=e818]: Review current custom formats and quality settings in Sonarr/Radarr and adjust profiles to prioritize higher bitrate sources and desired codecs
+                  - generic [ref=e819]:
+                    - generic "Priority P3" [ref=e820]:
+                      - img [ref=e821]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e823]':
+                      - img [ref=e824]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e826]':
+                      - img [ref=e827]
+                      - text: 45m
+                - button [ref=e830] [cursor=pointer]:
+                  - img [ref=e831]
+              - generic [ref=e834]:
+                - 'button "Complete task: Optimize Bazarr Subtitle Settings" [ref=e835] [cursor=pointer]':
+                  - img [ref=e836]
+                - generic [ref=e838]:
+                  - generic [ref=e839]: Optimize Bazarr Subtitle Settings
+                  - generic [ref=e840]: Review Bazarr provider settings and adjust language/scoring configurations to improve auto-download success rates
+                  - generic [ref=e841]:
+                    - generic "Priority P3" [ref=e842]:
+                      - img [ref=e843]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e845]':
+                      - img [ref=e846]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e848]':
+                      - img [ref=e849]
+                      - text: 45m
+                - button [ref=e852] [cursor=pointer]:
+                  - img [ref=e853]
+              - generic [ref=e856]:
+                - 'button "Complete task: Plan Aruba Trip Details" [ref=e857] [cursor=pointer]':
+                  - img [ref=e858]
+                - generic [ref=e860]:
+                  - generic [ref=e861]: Plan Aruba Trip Details
+                  - generic [ref=e862]: Research and book flights and accommodation for the Aruba trip to finalize the itinerary
+                  - generic [ref=e863]:
+                    - generic "Priority P3" [ref=e864]:
+                      - img [ref=e865]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e867]':
+                      - img [ref=e868]
+                      - text: Med
+                    - 'generic "Estimated time: 1.5h" [ref=e870]':
+                      - img [ref=e871]
+                      - text: 1.5h
+                - button [ref=e874] [cursor=pointer]:
+                  - img [ref=e875]
+              - generic [ref=e878]:
+                - 'button "Complete task: Complete Jolly Pirates Aruba excursion forms" [ref=e879] [cursor=pointer]':
+                  - img [ref=e880]
+                - generic [ref=e882]:
+                  - generic [ref=e883]: Complete Jolly Pirates Aruba excursion forms
+                  - generic [ref=e884]: Locate confirmation email or website link for Jolly Pirates Aruba and complete the required liability/registration forms
+                  - generic [ref=e885]:
+                    - generic "Priority P3" [ref=e886]:
+                      - img [ref=e887]
+                      - text: P3
+                    - 'generic "Energy: Low" [ref=e889]':
+                      - img [ref=e890]
+                      - text: Low
+                    - 'generic "Estimated time: 15m" [ref=e893]':
+                      - img [ref=e894]
+                      - text: 15m
+                - button [ref=e897] [cursor=pointer]:
+                  - img [ref=e898]
+              - generic [ref=e901]:
+                - 'button "Complete task: Inquire about Cattle Baron''s Ball table options" [ref=e902] [cursor=pointer]':
+                  - img [ref=e903]
+                - generic [ref=e905]:
+                  - generic [ref=e906]: Inquire about Cattle Baron's Ball table options
+                  - generic [ref=e907]: Draft and send email to Adrienne requesting information on table sponsorship tiers, pricing, and purchase deadlines for the October Cattle Baron's Ball.
+                  - generic [ref=e908]:
+                    - generic "Priority P3" [ref=e909]:
+                      - img [ref=e910]
+                      - text: P3
+                    - 'generic "Energy: Low" [ref=e912]':
+                      - img [ref=e913]
+                      - text: Low
+                    - 'generic "Estimated time: 15m" [ref=e916]':
+                      - img [ref=e917]
+                      - text: 15m
+                - button [ref=e920] [cursor=pointer]:
+                  - img [ref=e921]
+              - generic [ref=e924]:
+                - 'button "Complete task: Place bets on NCAA Men''s Final Four" [ref=e925] [cursor=pointer]':
+                  - img [ref=e926]
+                - generic [ref=e928]:
+                  - generic [ref=e929]: Place bets on NCAA Men's Final Four
+                  - generic [ref=e930]: Research current team statistics and odds, then place wagers on the NCAA Men's Final Four via a preferred sports betting platform
+                  - generic [ref=e931]:
+                    - generic "Priority P3" [ref=e932]:
+                      - img [ref=e933]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e935]':
+                      - img [ref=e936]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e938]':
+                      - img [ref=e939]
+                      - text: 45m
+                - button [ref=e942] [cursor=pointer]:
+                  - img [ref=e943]
+              - generic [ref=e946]:
+                - 'button "Complete task: Establish HOA compliance and task management process" [ref=e947] [cursor=pointer]':
+                  - img [ref=e948]
+                - generic [ref=e950]:
+                  - generic [ref=e951]: Establish HOA compliance and task management process
+                  - generic [ref=e952]: Review HOA bylaws and current correspondence to identify outstanding obligations or maintenance requirements.
+                  - generic [ref=e953]:
+                    - generic "Priority P3" [ref=e954]:
+                      - img [ref=e955]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e957]':
+                      - img [ref=e958]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e960]':
+                      - img [ref=e961]
+                      - text: 45m
+                - button [ref=e964] [cursor=pointer]:
+                  - img [ref=e965]
+              - generic [ref=e968]:
+                - 'button "Complete task: Allocate Funds for Capital Expenses" [ref=e969] [cursor=pointer]':
+                  - img [ref=e970]
+                - generic [ref=e972]:
+                  - generic [ref=e973]: Allocate Funds for Capital Expenses
+                  - generic [ref=e974]: Transfer $3,000 from investment account and $2,000 from savings account to checking to cover upcoming expenses
+                  - generic [ref=e975]:
+                    - generic "Priority P3" [ref=e976]:
+                      - img [ref=e977]
+                      - text: P3
+                    - 'generic "Energy: Low" [ref=e979]':
+                      - img [ref=e980]
+                      - text: Low
+                    - 'generic "Estimated time: 15m" [ref=e983]':
+                      - img [ref=e984]
+                      - text: 15m
+                - button [ref=e987] [cursor=pointer]:
+                  - img [ref=e988]
+              - generic [ref=e991]:
+                - 'button "Complete task: Perform stress test of Burn-Down Engine capabilities" [ref=e992] [cursor=pointer]':
+                  - img [ref=e993]
+                - generic [ref=e995]:
+                  - generic [ref=e996]: Perform stress test of Burn-Down Engine capabilities
+                  - generic [ref=e997]: Execute a full-feature audit including project mapping, task decomposition, and priority assessment to stress-test system capabilities.
+                  - generic [ref=e998]:
+                    - generic "Priority P3" [ref=e999]:
+                      - img [ref=e1000]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1002]':
+                      - img [ref=e1003]
+                      - text: Med
+                    - 'generic "Estimated time: 15m" [ref=e1005]':
+                      - img [ref=e1006]
+                      - text: 15m
+                - button [ref=e1009] [cursor=pointer]:
+                  - img [ref=e1010]
+              - generic [ref=e1013]:
+                - 'button "Complete task: Perform System Capability Validation: Claude Integration Test" [ref=e1014] [cursor=pointer]':
+                  - img [ref=e1015]
+                - generic [ref=e1017]:
+                  - generic [ref=e1018]: "Perform System Capability Validation: Claude Integration Test"
+                  - generic [ref=e1019]: Execute a structured prompt test with Claude to verify API connectivity and response parsing within the Agent Evaluation project.
+                  - generic [ref=e1020]:
+                    - generic "Priority P3" [ref=e1021]:
+                      - img [ref=e1022]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1024]':
+                      - img [ref=e1025]
+                      - text: Med
+                    - 'generic "Estimated time: 15m" [ref=e1027]':
+                      - img [ref=e1028]
+                      - text: 15m
+                - button [ref=e1031] [cursor=pointer]:
+                  - img [ref=e1032]
+              - generic [ref=e1035]:
+                - 'button "Complete task: Request GolfNow refund for Brickshire round" [ref=e1036] [cursor=pointer]':
+                  - img [ref=e1037]
+                - generic [ref=e1039]:
+                  - generic [ref=e1040]: Request GolfNow refund for Brickshire round
+                  - generic [ref=e1041]: Navigate to the GolfNow booking confirmation email, click the refund or help link, and submit a refund request for the Brickshire round due to cancellation/issue.
+                  - generic [ref=e1042]:
+                    - generic "Priority P3" [ref=e1043]:
+                      - img [ref=e1044]
+                      - text: P3
+                    - 'generic "Energy: Low" [ref=e1046]':
+                      - img [ref=e1047]
+                      - text: Low
+                    - 'generic "Estimated time: 10m" [ref=e1050]':
+                      - img [ref=e1051]
+                      - text: 10m
+                - button [ref=e1054] [cursor=pointer]:
+                  - img [ref=e1055]
+              - generic [ref=e1058]:
+                - 'button "Complete task: Review workout exercise spacing between days and average duration" [ref=e1059] [cursor=pointer]':
+                  - img [ref=e1060]
+                - generic [ref=e1062]:
+                  - generic [ref=e1063]: Review workout exercise spacing between days and average duration
+                  - generic [ref=e1064]: Export workout logs for the past month, calculate average session duration, and map out inter-session rest intervals to ensure optimal recovery spacing
+                  - generic [ref=e1065]:
+                    - generic "Priority P3" [ref=e1066]:
+                      - img [ref=e1067]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1069]':
+                      - img [ref=e1070]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e1072]':
+                      - img [ref=e1073]
+                      - text: 45m
+                - button [ref=e1076] [cursor=pointer]:
+                  - img [ref=e1077]
+              - generic [ref=e1080]:
+                - 'button "Complete task: Enroll Cameron in American Family Fitness" [ref=e1081] [cursor=pointer]':
+                  - img [ref=e1082]
+                - generic [ref=e1084]:
+                  - generic [ref=e1085]: Enroll Cameron in American Family Fitness
+                  - generic [ref=e1086]: Navigate to the American Family Fitness corporate portal and complete the membership enrollment for Cameron using the business credit card.
+                  - generic [ref=e1087]:
+                    - generic "Priority P3" [ref=e1088]:
+                      - img [ref=e1089]
+                      - text: P3
+                    - 'generic "Energy: Low" [ref=e1091]':
+                      - img [ref=e1092]
+                      - text: Low
+                    - 'generic "Estimated time: 20m" [ref=e1095]':
+                      - img [ref=e1096]
+                      - text: 20m
+                - button [ref=e1099] [cursor=pointer]:
+                  - img [ref=e1100]
+              - generic [ref=e1103]:
+                - 'button "Complete task: Categorize fitness exercises by muscle group" [ref=e1104] [cursor=pointer]':
+                  - img [ref=e1105]
+                - generic [ref=e1107]:
+                  - generic [ref=e1108]: Categorize fitness exercises by muscle group
+                  - generic [ref=e1109]: Create a structured list or spreadsheet categorizing common fitness exercises by primary muscle group targeted (e.g., chest, back, legs, core)
+                  - generic [ref=e1110]:
+                    - generic "Priority P3" [ref=e1111]:
+                      - img [ref=e1112]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1114]':
+                      - img [ref=e1115]
+                      - text: Med
+                    - 'generic "Estimated time: 20m" [ref=e1117]':
+                      - img [ref=e1118]
+                      - text: 20m
+                - button [ref=e1121] [cursor=pointer]:
+                  - img [ref=e1122]
+              - generic [ref=e1125]:
+                - 'button "Complete task: Analyze and Adjust Workout Durations" [ref=e1126] [cursor=pointer]':
+                  - img [ref=e1127]
+                - generic [ref=e1129]:
+                  - generic [ref=e1130]: Analyze and Adjust Workout Durations
+                  - generic [ref=e1131]: Review the last 4 weeks of exercise logs in my fitness tracking app to identify trends, then draft a revised workout schedule that aligns with current time constraints.
+                  - generic [ref=e1132]:
+                    - generic "Priority P3" [ref=e1133]:
+                      - img [ref=e1134]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1136]':
+                      - img [ref=e1137]
+                      - text: Med
+                    - 'generic "Estimated time: 45m" [ref=e1139]':
+                      - img [ref=e1140]
+                      - text: 45m
+                - button [ref=e1143] [cursor=pointer]:
+                  - img [ref=e1144]
+              - generic [ref=e1147]:
+                - 'button "Complete task: Research Capital One Fraud Detection Strategy" [ref=e1148] [cursor=pointer]':
+                  - img [ref=e1149]
+                - generic [ref=e1151]:
+                  - generic [ref=e1152]: Research Capital One Fraud Detection Strategy
+                  - generic [ref=e1153]: Search public whitepapers and technical blogs for Capital One's machine learning fraud detection architecture to extract key patterns for Agent Evaluation benchmarking
+                  - generic [ref=e1154]:
+                    - generic "Priority P3" [ref=e1155]:
+                      - img [ref=e1156]
+                      - text: P3
+                    - 'generic "Energy: Med" [ref=e1158]':
+                      - img [ref=e1159]
+                      - text: Med
+                    - 'generic "Estimated time: 1h" [ref=e1161]':
+                      - img [ref=e1162]
+                      - text: 1h
+                - button [ref=e1165] [cursor=pointer]:
+                  - img [ref=e1166]
+              - generic [ref=e1169]:
+                - 'button "Complete task: Incorporate Eisenhower Matrix and Ruthless Prioritization frameworks into Engage" [ref=e1170] [cursor=pointer]':
+                  - img [ref=e1171]
+                - generic [ref=e1173]:
+                  - generic [ref=e1174]: Incorporate Eisenhower Matrix and Ruthless Prioritization frameworks into Engage
+                  - generic [ref=e1175]: Draft a proposal or feature spec for integrating Eisenhower Matrix and Ruthless Prioritization frameworks into the Engage system interface
+                  - generic [ref=e1176]:
+                    - generic "Priority P3" [ref=e1177]:
+                      - img [ref=e1178]
+                      - text: P3
+                    - 'generic "Energy: High" [ref=e1180]':
+                      - img [ref=e1181]
+                      - text: High
+                    - 'generic "Estimated time: 1.5h" [ref=e1183]':
+                      - img [ref=e1184]
+                      - text: 1.5h
+                - button [ref=e1187] [cursor=pointer]:
+                  - img [ref=e1188]
+    - tablist "Main navigation" [ref=e32]:
+      - generic [ref=e33]:
+        - tab "99+ Inbox" [ref=e1190] [cursor=pointer]:
+          - generic [ref=e35]:
+            - img [ref=e36]
+            - generic [ref=e1191]: 99+
+          - generic [ref=e39]: Inbox
+        - tab "Clarify" [ref=e40] [cursor=pointer]:
+          - img [ref=e42]
+          - generic [ref=e44]: Clarify
+        - tab "Organize" [ref=e45] [cursor=pointer]:
+          - img [ref=e47]
+          - generic [ref=e49]: Organize
+        - tab "Engage" [selected] [ref=e50] [cursor=pointer]:
+          - img [ref=e52]
+          - generic [ref=e54]: Engage
+        - tab "Reflect" [ref=e56] [cursor=pointer]:
+          - img [ref=e58]
+          - generic [ref=e60]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e61]

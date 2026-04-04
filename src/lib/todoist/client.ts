@@ -87,13 +87,16 @@ class TodoistClient {
   private async fetchAllPages<T>(endpoint: string): Promise<T[]> {
     const results: T[] = [];
     let url = endpoint;
-    const sep = endpoint.includes('?') ? '&' : '?';
 
     while (url) {
       const page = await this.request<PaginatedResponse<T>>(url);
       results.push(...page.results);
       if (!page.next_cursor) break;
-      url = `${endpoint}${sep}cursor=${encodeURIComponent(page.next_cursor)}`;
+      // Build next URL by replacing/adding cursor param properly
+      const [basePath, queryString] = endpoint.split('?');
+      const params = new URLSearchParams(queryString || '');
+      params.set('cursor', page.next_cursor);
+      url = `${basePath}?${params.toString()}`;
     }
 
     return results;
@@ -169,6 +172,10 @@ class TodoistClient {
 
   async completeTask(id: string): Promise<void> {
     await this.request(`/tasks/${id}/close`, { method: 'POST' });
+  }
+
+  async reopenTask(id: string): Promise<void> {
+    await this.request(`/tasks/${id}/reopen`, { method: 'POST' });
   }
 
   async deleteTask(id: string): Promise<void> {

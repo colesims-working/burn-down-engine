@@ -1,0 +1,20 @@
+[     937ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/login:0
+[    1061ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ webpack-internal:///./node_modules/react-dom/cjs/react-dom.development.js:29889
+[    1088ms] TypeError: Cannot read properties of undefined (reading 'clientModules')
+    at <unknown> (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:40:25679)
+    at <unknown> (file://C:\repos\burn-down-engine\node_modules\next\dist\server\lib\trace\tracer.js:191:62)
+    at <unknown> (file://C:\repos\burn-down-engine\node_modules\next\dist\server\lib\trace\tracer.js:140:36)
+    at NoopContextManager.with (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NoopTracer.startActiveSpan (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18093)
+    at ProxyTracer.startActiveSpan (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18854)
+    at <unknown> (file://C:\repos\burn-down-engine\node_modules\next\dist\server\lib\trace\tracer.js:122:103)
+    at NoopContextManager.with (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NextTracerImpl.trace (file://C:\repos\burn-down-engine\node_modules\next\dist\server\lib\trace\tracer.js:122:28)
+    at <unknown> (file://C:\repos\burn-down-engine\node_modules\next\dist\server\lib\trace\tracer.js:191:31)
+    at ne (file://C:\repos\burn-down-engine\node_modules\next\dist\compiled\next-server\app-page.runtime.dev.js:42:1678)
+    at async doRender (file://C:\repos\burn-down-engine\node_modules\next\dist\server\base-server.js:1427:30)
+    at async cacheEntry.responseCache.get.routeKind (file://C:\repos\burn-down-engine\node_modules\next\dist\server\base-server.js:1588:28)
+[    1086ms] [LOG] [HMR] connected @ webpack-internal:///./node_modules/next/dist/client/components/react-dev-overlay/pages/websocket.js:38
+[    1090ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0

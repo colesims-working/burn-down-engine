@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw, Filter } from 'lucide-react';
 import { PriorityBadge, EnergyBadge, TimeEstimate, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { useUndo, useSyncHealth } from '@/components/providers/trust-provider';
+import { toast } from '@/hooks/use-toast';
+import { snapshotTask } from '@/lib/undo/engine';
+import type { TaskSnapshot } from '@/lib/undo/engine';
 
 const CONTEXTS = [
   { value: 'all', label: 'All', icon: '📋' },
@@ -54,10 +58,19 @@ export default function EngagePage() {
   const [contextFilter, setContextFilter] = useState<string>('all');
   const [focusIndex, setFocusIndex] = useState(0);
 
+  const { pushUndo, isActionBusy, markBusy } = useUndo();
+  const { addSyncFailure } = useSyncHealth();
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/todoist?action=engage');
-      if (res.ok) setData(await res.json());
+      if (res.ok) {
+        setData(await res.json());
+      } else {
+        toast({ title: 'Failed to load tasks', description: 'Could not fetch your task list. Try refreshing.', duration: 5000 });
+      }
+    } catch {
+      toast({ title: 'Network error', description: 'Could not connect to the server.', duration: 5000 });
     } finally {
       setLoading(false);
     }
@@ -65,92 +78,201 @@ export default function EngagePage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const handleComplete = useCallback(async (taskId: string) => {
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'complete', taskId }),
-    });
-    await fetchData();
+  // Listen for undo/task-changed events to refresh
+  useEffect(() => {
+    const handler = () => fetchData();
+    window.addEventListener('task-changed', handler);
+    return () => window.removeEventListener('task-changed', handler);
   }, [fetchData]);
+
+  // Helper: optimistically remove a task from the engage data
+  const removeTaskOptimistic = useCallback((taskId: string) => {
+    setData(prev => {
+      if (!prev) return prev;
+      const remove = (arr: Task[]) => arr.filter(t => t.id !== taskId);
+      return {
+        ...prev,
+        fires: remove(prev.fires),
+        mustDo: remove(prev.mustDo),
+        shouldDo: remove(prev.shouldDo),
+        thisWeek: remove(prev.thisWeek),
+        waiting: remove(prev.waiting),
+      };
+    });
+  }, []);
+
+  // Helper: find task and build snapshot from current in-memory data
+  const findTaskAndSnapshot = useCallback((taskId: string) => {
+    const allTasks = data ? [...data.fires, ...data.mustDo, ...data.shouldDo, ...data.thisWeek, ...data.waiting] : [];
+    const task = allTasks.find(t => t.id === taskId);
+    const snapshot: TaskSnapshot | null = task ? {
+      status: task.status, priority: task.priority, dueDate: null,
+      bumpCount: task.bumpCount, labels: task.labels, blockerNote: task.blockerNote,
+      completedAt: null, todoistId: null,
+    } : null;
+    return { task, snapshot };
+  }, [data]);
+
+  const handleComplete = useCallback(async (taskId: string) => {
+    if (isActionBusy(taskId)) return;
+    markBusy(taskId);
+
+    const { task, snapshot } = findTaskAndSnapshot(taskId);
+    const prevData = data;
+
+    // Optimistic: remove immediately
+    removeTaskOptimistic(taskId);
+
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', taskId }),
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        if (result.syncWarning) addSyncFailure(result.syncWarning);
+        if (snapshot && task) {
+          pushUndo({ action: 'completed', taskId, taskTitle: task.title, previousSnapshot: snapshot });
+        }
+        window.dispatchEvent(new Event('task-changed'));
+      } else {
+        // Revert on failure
+        setData(prevData);
+        toast({ title: 'Complete failed', description: 'Could not complete the task. Try again.', duration: 5000 });
+      }
+    } catch {
+      setData(prevData);
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
+    }
+  }, [fetchData, data, pushUndo, isActionBusy, markBusy, addSyncFailure, findTaskAndSnapshot, removeTaskOptimistic]);
 
   const handleDefer = useCallback(async (taskId: string) => {
-    const res = await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'defer', taskId }),
-    });
-    if (res.ok) {
-      const result = await res.json();
-      if (result.antiPileUp) {
-        setAntiPileUpTask(result);
-        setAntiPileUpChoice(null);
-        setAntiPileUpDate('');
+    if (isActionBusy(taskId)) return;
+    markBusy(taskId);
+
+    const { task, snapshot } = findTaskAndSnapshot(taskId);
+    const prevData = data;
+
+    // Optimistic: remove from active lists
+    removeTaskOptimistic(taskId);
+
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'defer', taskId }),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.syncWarning) addSyncFailure(result.syncWarning);
+        if (result.antiPileUp) {
+          setAntiPileUpTask(result);
+          setAntiPileUpChoice(null);
+          setAntiPileUpDate('');
+        }
+        if (snapshot && task) {
+          pushUndo({ action: 'bumped', taskId, taskTitle: task.title, previousSnapshot: snapshot });
+        }
+        window.dispatchEvent(new Event('task-changed'));
+      } else {
+        setData(prevData);
+        toast({ title: 'Defer failed', description: 'Could not defer the task. Try again.', duration: 5000 });
       }
+    } catch {
+      setData(prevData);
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
     }
-    await fetchData();
-  }, [fetchData]);
+  }, [fetchData, data, pushUndo, isActionBusy, markBusy, addSyncFailure, findTaskAndSnapshot, removeTaskOptimistic]);
 
   const handleBlock = async (taskId: string) => {
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'block', taskId, blockerNote: blockerText }),
-    });
+    if (isActionBusy(taskId)) return;
+    markBusy(taskId);
+
+    const { task, snapshot } = findTaskAndSnapshot(taskId);
+    const prevData = data;
+
+    // Optimistic: remove from active lists
+    removeTaskOptimistic(taskId);
     setBlockModal(null);
     setBlockerText('');
-    await fetchData();
+
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'block', taskId, blockerNote: blockerText }),
+      });
+
+      if (res.ok && snapshot && task) {
+        pushUndo({ action: 'blocked', taskId, taskTitle: task.title, previousSnapshot: snapshot });
+        window.dispatchEvent(new Event('task-changed'));
+      } else if (!res.ok) {
+        setData(prevData);
+        toast({ title: 'Block failed', description: 'Could not block the task. Try again.', duration: 5000 });
+      }
+    } catch {
+      setData(prevData);
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
+    }
   };
 
   const handleFire = async () => {
     if (!fireText.trim()) return;
-    await fetch('/api/todoist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'fire', description: fireText }),
-    });
-    setFireModal(false);
-    setFireText('');
-    await fetchData();
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fire', description: fireText }),
+      });
+      if (res.ok) {
+        setFireModal(false);
+        setFireText('');
+        window.dispatchEvent(new Event('task-changed'));
+        await fetchData();
+      } else {
+        toast({ title: 'Fire creation failed', description: 'Could not create the urgent task.', duration: 5000 });
+      }
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
+    }
   };
 
   const handleAntiPileUpDecision = async () => {
     if (!antiPileUpTask || !antiPileUpChoice) return;
     const taskId = antiPileUpTask.id;
 
-    switch (antiPileUpChoice) {
-      case 'promote':
-        // Promote to P1 today
-        await fetch('/api/todoist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+    try {
+      const actions: Record<string, () => Promise<Response>> = {
+        promote: () => fetch('/api/todoist', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'update-task', taskId, data: { priority: 1, status: 'active', dueDate: null } }),
-        });
-        break;
-      case 'kill':
-        await fetch('/api/todoist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        }),
+        kill: () => fetch('/api/todoist', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'kill', taskId }),
-        });
-        break;
-      case 'schedule':
-        if (antiPileUpDate) {
-          await fetch('/api/todoist', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'update-task', taskId, data: { dueDate: antiPileUpDate, status: 'active' } }),
-          });
-        }
-        break;
-      case 'delegate':
-        // For now, mark as waiting with a note
-        await fetch('/api/todoist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        }),
+        schedule: () => fetch('/api/todoist', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update-task', taskId, data: { dueDate: antiPileUpDate, status: 'active' } }),
+        }),
+        delegate: () => fetch('/api/todoist', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'block', taskId, blockerNote: 'Delegated — awaiting handoff' }),
-        });
-        break;
+        }),
+      };
+
+      if (antiPileUpChoice === 'schedule' && !antiPileUpDate) return;
+      const res = await actions[antiPileUpChoice]();
+      if (!res.ok) {
+        toast({ title: 'Decision failed', description: 'Could not apply the anti-pile-up decision.', duration: 5000 });
+        return;
+      }
+      window.dispatchEvent(new Event('task-changed'));
+    } catch {
+      toast({ title: 'Network error', description: 'Could not reach the server.', duration: 5000 });
+      return;
     }
 
     setAntiPileUpTask(null);
@@ -172,7 +294,7 @@ export default function EngagePage() {
 
   const allActive = data ? [...data.fires, ...data.mustDo, ...data.shouldDo] : [];
   const filteredActive = filterByContext(allActive);
-  const nextTasks = filteredActive.slice(0, 10);
+  const nextTasks = useMemo(() => filteredActive.slice(0, 10), [filteredActive]);
 
   // Keyboard navigation — must be before early return to maintain hook order
   useEffect(() => {
@@ -216,7 +338,7 @@ export default function EngagePage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [nextTasks.length, focusIndex, handleComplete, handleDefer]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nextTasks, focusIndex, handleComplete, handleDefer]);
 
   if (loading || !data) {
     return (
@@ -261,8 +383,8 @@ export default function EngagePage() {
             />
           </div>
         </div>
-        <span className="text-sm font-medium text-muted-foreground">
-          {completedCount}/{completedCount + totalPlanned}
+        <span className="text-sm font-medium text-muted-foreground" title={`${completedCount} of ${completedCount + totalPlanned} tasks completed today`}>
+          {completedCount}/{completedCount + totalPlanned} done
         </span>
       </div>
 
@@ -319,16 +441,26 @@ export default function EngagePage() {
                 <div className="flex-1 min-w-0">
                   <div className={cn('text-sm font-semibold', i === 0 && 'text-base')}>{task.title}</div>
                   {task.nextAction && (
-                    <div className="mt-0.5 text-xs text-muted-foreground">{task.nextAction}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{task.nextAction}</div>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <EnergyBadge level={task.energyLevel} />
                     <TimeEstimate minutes={task.timeEstimateMin} />
-                    {task.labels && (
-                      <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                        {task.labels}
-                      </span>
-                    )}
+                    {task.labels && (() => {
+                      try {
+                        const parsed = JSON.parse(task.labels);
+                        if (Array.isArray(parsed)) return parsed.map((l: string) => (
+                          <span key={l} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            @{l}
+                          </span>
+                        ));
+                      } catch {}
+                      return (
+                        <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {task.labels}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
                 {/* Desktop action buttons */}
@@ -637,7 +769,7 @@ function TaskSection({
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium break-words">{task.title}</div>
                 {task.nextAction && expandedId !== task.id && (
-                  <div className="text-xs text-muted-foreground break-words">{task.nextAction}</div>
+                  <div className="text-xs text-muted-foreground break-words line-clamp-2">{task.nextAction}</div>
                 )}
                 {/* Mobile-only: inline badges below title */}
                 <div className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
@@ -664,6 +796,13 @@ function TaskSection({
                   </span>
                 )}
               </div>
+              <button
+                onClick={() => onDefer(task.id)}
+                aria-label={`Defer: ${task.title}`}
+                className="touch-show flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 sm:h-auto sm:w-auto sm:rounded sm:p-1"
+              >
+                <ArrowRight className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+              </button>
               <button
                 onClick={() => onExpand(expandedId === task.id ? null : task.id)}
                 className="touch-show flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity hover:bg-accent group-hover:opacity-100 sm:h-auto sm:w-auto sm:rounded sm:p-1"

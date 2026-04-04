@@ -1,5 +1,6 @@
 import { db, schema } from '@/lib/db/client';
 import { LLMOperation } from './router';
+import { lookupPricing, estimateCost } from './providers';
 import { Langfuse } from 'langfuse';
 
 // Langfuse client — only active when credentials are configured
@@ -27,19 +28,11 @@ export async function trackLLMInteraction(data: {
   try {
     const latencyMs = data.endTime - data.startTime;
 
-    // Simple cost estimation (USD)
-    // Prices as of Feb 2026 (hypothetical/based on current trends)
-    // Gemini Flash: $0.10 / 1M input, $0.30 / 1M output
-    // Claude Opus: $15.00 / 1M input, $75.00 / 1M output
-    let cost = 0;
+    // Cost estimation using the full pricing table from providers.ts
     const inTokens = data.usage?.promptTokens || (data.input.length / 4);
     const outTokens = data.usage?.completionTokens || (data.output.length / 4);
-
-    if (data.model.includes('gemini') || data.model.includes('flash')) {
-      cost = (inTokens / 1_000_000) * 0.10 + (outTokens / 1_000_000) * 0.30;
-    } else if (data.model.includes('claude') || data.model.includes('opus')) {
-      cost = (inTokens / 1_000_000) * 15.00 + (outTokens / 1_000_000) * 75.00;
-    }
+    const pricing = lookupPricing(data.model);
+    const cost = pricing ? estimateCost(pricing, Math.ceil(inTokens), Math.ceil(outTokens)) : 0;
 
     await db.insert(schema.llmInteractions).values({
       page: data.operation.split('_')[0] || 'core', // logical guess at page

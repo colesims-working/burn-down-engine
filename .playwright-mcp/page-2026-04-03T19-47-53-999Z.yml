@@ -1,0 +1,14 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img [ref=e6]
+      - heading "Burn-Down Engine" [level=1] [ref=e8]
+      - paragraph [ref=e9]: Daily-driven GTD intelligence
+    - form "Login form" [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: Password
+        - textbox "Login password" [active] [ref=e13]:
+          - /placeholder: Password
+        - paragraph [ref=e14]: Single-user app — enter your configured password
+      - button "Sign In" [disabled] [ref=e15]
+  - alert [ref=e16]

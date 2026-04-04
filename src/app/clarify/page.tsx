@@ -5,6 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import { Sparkles, Check, ChevronDown, ChevronUp, Loader2, MessageCircle, Mic, MicOff, X, RotateCcw, Pencil, CheckCircle2, Undo2, GitBranch, MessageSquare, Zap } from 'lucide-react';
 import { PriorityBadge, EnergyBadge, TimeEstimate, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { cn } from '@/lib/utils';
+import { useUndo } from '@/components/providers/trust-provider';
+import { toast } from '@/hooks/use-toast';
+import type { TaskSnapshot } from '@/lib/undo/engine';
 
 interface ClarifyResult {
   title: string;
@@ -46,10 +49,15 @@ interface ProcessedTask {
 export default function ClarifyPage() {
   const searchParams = useSearchParams();
   const filterTaskIds = searchParams.get('taskIds')?.split(',').filter(Boolean) || [];
+  const { pushUndo, isActionBusy, markBusy } = useUndo();
 
   const [tasks, setTasks] = useState<ProcessedTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('clarify-guide-dismissed') !== '1';
+  });
   const [processedCount, setProcessedCount] = useState(0);
   const [processingTotal, setProcessingTotal] = useState(0);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
@@ -156,7 +164,10 @@ export default function ClarifyPage() {
             splitFromId: taskId,
           });
         }
-      } catch {}
+      } catch (e) {
+        console.error('Auto-split subtask creation failed:', e);
+        toast({ title: 'Subtask creation failed', description: 'Some subtasks could not be created.', duration: 4000 });
+      }
     }
 
     if (newTasks.length > 0) {
@@ -198,7 +209,7 @@ export default function ClarifyPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', taskId: child.id }),
-      }).catch(() => {})
+      }).catch(e => console.error('Failed to delete split child:', e))
     ));
   };
 
@@ -220,7 +231,9 @@ export default function ClarifyPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'delete', taskId: child.id }),
         });
-      } catch {}
+      } catch (e) {
+        console.error('Failed to undo split child:', e);
+      }
     }
   };
 
@@ -245,7 +258,9 @@ export default function ClarifyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', taskId: childId }),
       });
-    } catch {}
+    } catch (e) {
+      console.error('Failed to delete split child:', e);
+    }
   };
 
   // Auto-sync if stale (>5 min since last inbox sync)
@@ -307,6 +322,8 @@ export default function ClarifyPage() {
           }));
           setTasks(loadProgress(initial));
         }
+      } catch {
+        toast({ title: 'Failed to load inbox', description: 'Could not fetch tasks for clarification.', duration: 5000 });
       } finally {
         setLoading(false);
       }
@@ -330,6 +347,10 @@ export default function ClarifyPage() {
   };
 
   const processSelected = async () => {
+    const count = tasks.filter(t => t.selected && t.status === 'pending').length;
+    if (count > 50 && !window.confirm(`This will make ${count} LLM calls. This may take a while and use API credits. Continue?`)) {
+      return;
+    }
     setProcessing(true);
     setProcessedCount(0);
     setProcessingStartTime(Date.now());
@@ -415,6 +436,8 @@ export default function ClarifyPage() {
   const approveTask = async (index: number) => {
     const task = tasks[index];
     if (!task.result) return;
+    if (isActionBusy(task.id)) return;
+    markBusy(task.id);
 
     // Apply any overrides from editing
     const clarificationToApply = task.editDraft
@@ -436,7 +459,18 @@ export default function ClarifyPage() {
           clarification: clarificationToApply,
         }),
       });
-      if (!res.ok) {
+      if (res.ok) {
+        pushUndo({
+          action: 'clarify_approved',
+          taskId: task.id,
+          taskTitle: task.originalText,
+          previousSnapshot: {
+            status: 'inbox', priority: null, dueDate: null,
+            bumpCount: null, labels: null, blockerNote: null,
+            completedAt: null, todoistId: null,
+          },
+        });
+      } else {
         // Revert on failure
         setTasks(prev => prev.map((t, idx) =>
           idx === index ? { ...t, status: 'done', result: clarificationToApply } : t
@@ -464,6 +498,8 @@ export default function ClarifyPage() {
   const completeTaskInClarify = async (index: number) => {
     const task = tasks[index];
     if (!task) return;
+    if (isActionBusy(task.id)) return;
+    markBusy(task.id);
     const taskId = task.id;
 
     // Only mark this specific task by ID, not index (prevents marking all tasks)
@@ -476,6 +512,16 @@ export default function ClarifyPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'complete-in-clarify', taskId }),
+      });
+      pushUndo({
+        action: 'completed',
+        taskId,
+        taskTitle: task.originalText,
+        previousSnapshot: {
+          status: 'inbox', priority: null, dueDate: null,
+          bumpCount: null, labels: null, blockerNote: null,
+          completedAt: null, todoistId: null,
+        },
       });
     } catch {
       // Revert on failure
@@ -803,14 +849,24 @@ export default function ClarifyPage() {
           )}
           {/* GTD Clarification Guide */}
           {pendingTasks.length > 0 && !processing && (
+            guideOpen ? (
             <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-primary/70">
                   GTD Clarify Questions — Ask yourself for each item:
                 </span>
-                <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
-                  j/k navigate · a approve · e edit · x reject · d done · Ctrl+Enter process
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="hidden text-[10px] text-muted-foreground/60 sm:block">
+                    j/k navigate · a approve · e edit · x reject · d done · Ctrl+Enter process
+                  </span>
+                  <button
+                    onClick={() => { setGuideOpen(false); localStorage.setItem('clarify-guide-dismissed', '1'); }}
+                    className="rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+                    title="Dismiss guide"
+                  >
+                    <span className="text-xs">✕</span>
+                  </button>
+                </div>
               </div>
               <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-3 sm:gap-3">
                 <div className="flex items-start gap-2">
@@ -830,6 +886,14 @@ export default function ClarifyPage() {
                 AI will suggest answers below — review and approve or edit each one. You make the decisions.
               </p>
             </div>
+            ) : (
+            <button
+              onClick={() => { setGuideOpen(true); localStorage.removeItem('clarify-guide-dismissed'); }}
+              className="mb-4 text-[10px] text-primary/50 hover:text-primary/80 transition-colors"
+            >
+              Show GTD guide
+            </button>
+            )
           )}
           {/* Questions Section */}
           {needsInputCount > 0 && (

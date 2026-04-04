@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Key, RefreshCw, Database, Cpu, Download, AlertTriangle, Play, CheckCircle, XCircle, Loader2, Zap, ChevronDown, Shield, EyeOff, Eye } from 'lucide-react';
+import { Settings, Key, RefreshCw, Database, Cpu, Download, AlertTriangle, Play, CheckCircle, XCircle, Loader2, Zap, ChevronDown, Shield, EyeOff, Eye, BarChart3 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/ui-parts';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 type Provider = 'gemini' | 'anthropic' | 'openai';
@@ -69,39 +70,89 @@ export default function SettingsPage() {
   }>>({});
   const [disabledModels, setDisabledModels] = useState<string[]>([]);
   const [adminOpen, setAdminOpen] = useState(false);
+
+  // Usage dashboard state
+  const [usageStats, setUsageStats] = useState<{
+    totalCalls: number; totalCost: number; totalTokensIn: number; totalTokensOut: number;
+    byOperation: Record<string, { calls: number; tokensIn: number; tokensOut: number; cost: number; avgLatency: number }>;
+    byDay: Record<string, { calls: number; cost: number }>;
+    period: number;
+  } | null>(null);
+  const [usagePeriod, setUsagePeriod] = useState('30');
+  const [usageLoading, setUsageLoading] = useState(false);
+
+  // Diagnostics log state
+  const [appLogs, setAppLogs] = useState<{ id: string; level: string; category: string; message: string; details: string | null; timestamp: string | null }[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [logCategory, setLogCategory] = useState<string>('all');
+
+  // Budget state
+  const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
   const [savingDisabled, setSavingDisabled] = useState(false);
 
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
   const loadSettings = useCallback(async () => {
-    const [settingsRes, modelsRes, syncRes] = await Promise.all([
-      fetch('/api/todoist?action=app-settings'),
-      fetch('/api/todoist?action=available-models'),
-      fetch('/api/todoist?action=sync-state'),
-    ]);
+    try {
+      const [settingsRes, modelsRes, syncRes] = await Promise.all([
+        fetch('/api/todoist?action=app-settings'),
+        fetch('/api/todoist?action=available-models'),
+        fetch('/api/todoist?action=sync-state'),
+      ]);
 
-    if (settingsRes.ok) {
-      const data = await settingsRes.json();
-      if (data.modelConfig && typeof data.modelConfig === 'object') {
-        setModelConfig(data.modelConfig);
+      if (settingsRes.ok) {
+        const data = await settingsRes.json();
+        if (data.modelConfig && typeof data.modelConfig === 'object') {
+          setModelConfig(data.modelConfig);
+        }
+        setAutoApproveThreshold(data.autoApproveThreshold ?? 0.8);
+        setMonthlyBudget(data.monthlyBudget ?? null);
+        if (Array.isArray(data.disabledModels)) {
+          setDisabledModels(data.disabledModels);
+        }
       }
-      setAutoApproveThreshold(data.autoApproveThreshold ?? 0.8);
-      if (Array.isArray(data.disabledModels)) {
-        setDisabledModels(data.disabledModels);
+
+      if (modelsRes.ok) {
+        const data = await modelsRes.json();
+        setProviders(data);
       }
-    }
 
-    if (modelsRes.ok) {
-      const data = await modelsRes.json();
-      setProviders(data);
-    }
-    setLoadingModels(false);
-
-    if (syncRes.ok) {
-      const data = await syncRes.json();
-      setSyncState(data);
+      if (syncRes.ok) {
+        const data = await syncRes.json();
+        setSyncState(data);
+      }
+      setSettingsError(null);
+    } catch {
+      setSettingsError('Failed to load settings. Check your connection.');
+    } finally {
+      setLoadingModels(false);
     }
   }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  const loadUsageStats = useCallback(async (period: string) => {
+    setUsageLoading(true);
+    try {
+      const res = await fetch(`/api/todoist?action=usage-stats&period=${period}`);
+      if (res.ok) setUsageStats(await res.json());
+    } catch {} finally {
+      setUsageLoading(false);
+    }
+  }, []);
+
+  const loadAppLogs = useCallback(async (category?: string) => {
+    setLogsLoading(true);
+    try {
+      const params = category && category !== 'all' ? `&category=${category}` : '';
+      const res = await fetch(`/api/todoist?action=app-log&limit=200${params}`);
+      if (res.ok) setAppLogs(await res.json());
+    } catch {} finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadUsageStats(usagePeriod); }, [usagePeriod, loadUsageStats]);
 
   const modelsForProvider = (provider: Provider): AvailableModel[] => {
     return (providers.find(p => p.provider === provider)?.models || [])
@@ -127,10 +178,10 @@ export default function SettingsPage() {
     const key = `${provider}:${model}`;
     setModelTests(prev => ({ ...prev, [key]: { status: 'testing' } }));
     try {
-      const res = await fetch('/api/todoist', {
+      const res = await fetch('/api/model-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'test-model', provider, model }),
+        body: JSON.stringify({ provider, model }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -148,9 +199,12 @@ export default function SettingsPage() {
     }
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     setSettingsSaved(false);
+    setSaveError(null);
     try {
       const res = await fetch('/api/todoist', {
         method: 'POST',
@@ -160,7 +214,13 @@ export default function SettingsPage() {
           data: { modelConfig, autoApproveThreshold, disabledModels },
         }),
       });
-      if (res.ok) setSettingsSaved(true);
+      if (res.ok) {
+        setSettingsSaved(true);
+      } else {
+        setSaveError('Failed to save settings.');
+      }
+    } catch {
+      setSaveError('Network error — could not save.');
     } finally {
       setSavingSettings(false);
       setTimeout(() => setSettingsSaved(false), 3000);
@@ -177,27 +237,41 @@ export default function SettingsPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        alert(`Synced ${data.synced} tasks`);
+        toast({ title: 'Sync complete', description: `Synced ${data.synced} tasks.`, duration: 4000 });
         const stateRes = await fetch('/api/todoist?action=sync-state');
         if (stateRes.ok) setSyncState(await stateRes.json());
+        window.dispatchEvent(new Event('task-changed'));
+        window.dispatchEvent(new Event('inbox-changed'));
+      } else {
+        toast({ title: 'Sync failed', description: 'Server error during sync.', duration: 5000 });
       }
+    } catch {
+      toast({ title: 'Sync failed', description: 'Network error during sync.', duration: 5000 });
     } finally {
       setSyncing(false);
     }
   };
 
   const handleExport = async (type: 'knowledge' | 'history') => {
-    const action = type === 'knowledge' ? 'knowledge' : 'task-history';
-    const res = await fetch(`/api/todoist?action=${action}`);
-    if (res.ok) {
-      const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `burn-down-${type}-${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+    try {
+      const action = type === 'knowledge' ? 'knowledge' : 'task-history';
+      const res = await fetch(`/api/todoist?action=${action}`);
+      if (res.ok) {
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `burn-down-${type}-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 200);
+      } else {
+        toast({ title: 'Export failed', description: 'Could not fetch data for export.', duration: 4000 });
+      }
+    } catch {
+      toast({ title: 'Export failed', description: 'Network error during export.', duration: 4000 });
     }
   };
 
@@ -346,7 +420,7 @@ export default function SettingsPage() {
                   <button
                     onClick={() => {
                       const geminiModels = modelsForProvider('gemini');
-                      const fast = geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
+                      const fast = geminiModels.find(m => m.id.includes('3.1-flash-lite')) || geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
                       if (fast) {
                         const config: ModelConfig = {};
                         for (const op of OPERATIONS) config[op] = { provider: 'gemini', model: fast.id };
@@ -375,7 +449,7 @@ export default function SettingsPage() {
                     onClick={() => {
                       const geminiModels = modelsForProvider('gemini');
                       const anthropicModels = modelsForProvider('anthropic');
-                      const fast = geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
+                      const fast = geminiModels.find(m => m.id.includes('3.1-flash-lite')) || geminiModels.find(m => m.id.includes('flash')) || geminiModels[0];
                       const smart = anthropicModels.find(m => m.id.includes('sonnet') || m.id.includes('opus')) || anthropicModels[0];
                       if (fast && smart) {
                         const complexOps = ['clarify_task', 'complex_decomposition', 'weekly_review', 'project_audit', 'priority_recalibration'];
@@ -487,8 +561,12 @@ export default function SettingsPage() {
                           aria-label={`${info.label} model`}
                           className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-2.5 text-xs text-foreground focus:border-primary focus:outline-none sm:py-1.5"
                         >
-                          {availModels.length === 0 && (
+                          {availModels.length === 0 && !assignment.model && (
                             <option value="">No models loaded</option>
+                          )}
+                          {/* Show current model even if not in available list */}
+                          {assignment.model && !availModels.some(m => m.id === assignment.model) && (
+                            <option value={assignment.model}>{assignment.model}</option>
                           )}
                           {availModels.map(m => (
                             <option key={m.id} value={m.id}>{m.name}</option>
@@ -672,6 +750,217 @@ export default function SettingsPage() {
             >
               Reset Knowledge Base
             </button>
+          </div>
+        </Section>
+
+        {/* Usage Dashboard */}
+        <Section icon={BarChart3} title="LLM Usage" description="Token consumption, cost, and operational breakdown">
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <select
+                value={usagePeriod}
+                onChange={(e) => setUsagePeriod(e.target.value)}
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm"
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
+              <button
+                onClick={() => loadUsageStats(usagePeriod)}
+                disabled={usageLoading}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50"
+              >
+                {usageLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              </button>
+            </div>
+
+            {usageStats && (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="text-xs text-muted-foreground">Total Calls</div>
+                    <div className="mt-1 text-lg font-semibold">{usageStats.totalCalls.toLocaleString()}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="text-xs text-muted-foreground">Total Cost</div>
+                    <div className="mt-1 text-lg font-semibold">${usageStats.totalCost.toFixed(4)}</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="text-xs text-muted-foreground">Tokens In</div>
+                    <div className="mt-1 text-lg font-semibold">{(usageStats.totalTokensIn / 1000).toFixed(1)}k</div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-secondary/30 p-3">
+                    <div className="text-xs text-muted-foreground">Tokens Out</div>
+                    <div className="mt-1 text-lg font-semibold">{(usageStats.totalTokensOut / 1000).toFixed(1)}k</div>
+                  </div>
+                </div>
+
+                {/* Budget status */}
+                {monthlyBudget && monthlyBudget > 0 && (() => {
+                  // Calculate current month's spend from byDay
+                  const now = new Date();
+                  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                  const monthSpend = Object.entries(usageStats.byDay)
+                    .filter(([day]) => day.startsWith(monthPrefix))
+                    .reduce((sum, [, d]) => sum + d.cost, 0);
+                  const pct = (monthSpend / monthlyBudget) * 100;
+                  const barColor = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-green-500';
+                  return (
+                    <div className={cn('rounded-lg border p-3', pct >= 80 ? 'border-amber-500/30 bg-amber-500/5' : 'border-border')}>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Monthly budget</span>
+                        <span className={pct >= 100 ? 'text-red-400 font-medium' : pct >= 80 ? 'text-amber-400 font-medium' : 'text-muted-foreground'}>
+                          ${monthSpend.toFixed(4)} / ${monthlyBudget.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-secondary overflow-hidden">
+                        <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+                      {pct >= 80 && (
+                        <p className="mt-1.5 text-[10px] text-amber-400">
+                          {pct >= 100 ? 'Budget exceeded for this month.' : `${Math.round(pct)}% of monthly budget used.`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* By operation breakdown */}
+                <div>
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">By Operation</div>
+                  <div className="space-y-1">
+                    {Object.entries(usageStats.byOperation)
+                      .sort(([, a], [, b]) => b.cost - a.cost)
+                      .map(([op, stats]) => (
+                        <div key={op} className="flex items-center gap-3 rounded-lg bg-secondary/30 px-3 py-2 text-xs">
+                          <span className="flex-1 font-medium">{op.replace(/_/g, ' ')}</span>
+                          <span className="text-muted-foreground">{stats.calls} calls</span>
+                          <span className="text-muted-foreground">{stats.avgLatency}ms avg</span>
+                          <span className="font-medium">${stats.cost.toFixed(4)}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Daily trend (simple text chart) */}
+                {Object.keys(usageStats.byDay).length > 0 && (
+                  <div>
+                    <div className="mb-2 text-xs font-medium text-muted-foreground">Daily Activity</div>
+                    <div className="space-y-0.5">
+                      {Object.entries(usageStats.byDay)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .slice(-14) // Show last 14 days
+                        .map(([day, stats]) => {
+                          const maxCalls = Math.max(...Object.values(usageStats.byDay).map(d => d.calls));
+                          const width = maxCalls > 0 ? (stats.calls / maxCalls) * 100 : 0;
+                          return (
+                            <div key={day} className="flex items-center gap-2 text-[10px]">
+                              <span className="w-16 shrink-0 text-muted-foreground">{day.slice(5)}</span>
+                              <div className="flex-1 h-3 rounded bg-secondary/50 overflow-hidden">
+                                <div className="h-full rounded bg-primary/60" style={{ width: `${width}%` }} />
+                              </div>
+                              <span className="w-8 text-right text-muted-foreground">{stats.calls}</span>
+                              <span className="w-16 text-right text-muted-foreground">${stats.cost.toFixed(4)}</span>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Section>
+
+        {/* Budget Settings */}
+        <Section icon={Shield} title="Budget" description="Monthly cost limit with warnings">
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-muted-foreground">Monthly budget (USD)</label>
+              <input
+                type="number"
+                step="0.50"
+                min="0"
+                value={monthlyBudget ?? ''}
+                onChange={(e) => setMonthlyBudget(e.target.value ? parseFloat(e.target.value) : null)}
+                placeholder="No limit"
+                className="w-32 rounded-lg border border-border bg-card px-3 py-1.5 text-sm"
+              />
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch('/api/todoist', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'update-settings', data: { monthlyBudget } }),
+                    });
+                    toast({ title: 'Budget saved', duration: 3000 });
+                  } catch {
+                    toast({ title: 'Failed to save budget', duration: 4000 });
+                  }
+                }}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Save
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {monthlyBudget ? `Warning shown at 80% ($${(monthlyBudget * 0.8).toFixed(2)}) and 100% ($${monthlyBudget.toFixed(2)}).` : 'No budget set — all LLM operations will run without cost limits.'}
+            </p>
+          </div>
+        </Section>
+
+        {/* Diagnostics Log */}
+        <Section icon={Database} title="Diagnostics Log" description="System events, sync activity, and errors">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <select
+                value={logCategory}
+                onChange={(e) => { setLogCategory(e.target.value); loadAppLogs(e.target.value); }}
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm"
+              >
+                <option value="all">All Categories</option>
+                <option value="sync">Sync</option>
+                <option value="task">Task</option>
+                <option value="llm">LLM</option>
+                <option value="auth">Auth</option>
+                <option value="system">System</option>
+              </select>
+              <button
+                onClick={() => loadAppLogs(logCategory)}
+                disabled={logsLoading}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent disabled:opacity-50"
+              >
+                {logsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Load'}
+              </button>
+            </div>
+
+            {appLogs.length > 0 ? (
+              <div className="max-h-96 space-y-1 overflow-y-auto rounded-lg border border-border bg-secondary/20 p-2">
+                {appLogs.map(log => (
+                  <div key={log.id} className="flex items-start gap-2 rounded px-2 py-1.5 text-[11px] hover:bg-secondary/50">
+                    <span className={cn(
+                      'mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full',
+                      log.level === 'error' ? 'bg-red-400' : log.level === 'warn' ? 'bg-amber-400' : 'bg-green-400',
+                    )} />
+                    <span className="w-12 shrink-0 text-muted-foreground/60">{log.timestamp?.split('T')[1]?.slice(0, 8) || ''}</span>
+                    <span className="w-12 shrink-0 rounded bg-secondary px-1 py-0.5 text-center text-[9px] text-muted-foreground">{log.category}</span>
+                    <span className="flex-1 text-muted-foreground">{log.message}</span>
+                    {log.details && (
+                      <span className="shrink-0 text-[9px] text-muted-foreground/40" title={log.details}>
+                        [details]
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                {logsLoading ? 'Loading...' : 'No log entries. Click "Load" to fetch diagnostics.'}
+              </p>
+            )}
           </div>
         </Section>
 

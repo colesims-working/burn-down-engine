@@ -1,0 +1,1102 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: 445 issues. Synced 2m ago" [ref=e76] [cursor=pointer]'
+        - generic [ref=e13]:
+          - button "More options" [active] [ref=e14] [cursor=pointer]:
+            - img [ref=e15]
+          - generic [ref=e1330]:
+            - link "Knowledge" [ref=e1331] [cursor=pointer]:
+              - /url: /knowledge
+              - img [ref=e1332]
+              - text: Knowledge
+            - link "Settings" [ref=e1342] [cursor=pointer]:
+              - /url: /settings
+              - img [ref=e1343]
+              - text: Settings
+            - button "Log out" [ref=e1347] [cursor=pointer]:
+              - img [ref=e1348]
+              - text: Log out
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - heading "Inbox" [level=1] [ref=e24]
+            - paragraph [ref=e25]: Unprocessed captures waiting to be clarified
+          - button "Sync" [ref=e27] [cursor=pointer]:
+            - img [ref=e28]
+            - text: Sync
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - textbox "Quick capture..." [ref=e35]
+            - button [disabled] [ref=e36]:
+              - img [ref=e37]
+          - button [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+        - status [ref=e77]:
+          - img [ref=e78]
+          - generic [ref=e80]:
+            - generic [ref=e81]: 205 items need processing
+            - paragraph [ref=e82]: Large inbox — select a batch and send to Clarify to keep your system trusted.
+        - generic [ref=e85]:
+          - button "Select all 205 tasks" [ref=e86] [cursor=pointer]: Select all (205)
+          - button "Sort by oldest first" [ref=e87] [cursor=pointer]:
+            - img [ref=e88]
+            - text: Newest
+        - list "Inbox tasks" [ref=e91]:
+          - listitem [ref=e92]:
+            - 'checkbox "Select task: Send email to Larry and Cameron to gather passwords to all accounts" [ref=e93]'
+            - generic [ref=e94]: Send email to Larry and Cameron to gather passwords to all accounts
+            - 'button "Quick done: Send email to Larry and Cameron to gather passwords to all accounts" [ref=e95] [cursor=pointer]':
+              - img [ref=e96]
+          - listitem [ref=e98]:
+            - 'checkbox "Select task: Come up with plan to fire Larry and avoid unemployment" [ref=e99]'
+            - generic [ref=e100]: Come up with plan to fire Larry and avoid unemployment
+            - 'button "Quick done: Come up with plan to fire Larry and avoid unemployment" [ref=e101] [cursor=pointer]':
+              - img [ref=e102]
+          - listitem [ref=e104]:
+            - 'checkbox "Select task: Come up with plan to fire Larry and avoid paying unemployment" [ref=e105]'
+            - generic [ref=e106]: Come up with plan to fire Larry and avoid paying unemployment
+            - 'button "Quick done: Come up with plan to fire Larry and avoid paying unemployment" [ref=e107] [cursor=pointer]':
+              - img [ref=e108]
+          - listitem [ref=e110]:
+            - 'checkbox "Select task: Renew Mullvad before Sep 24 2026" [ref=e111]'
+            - generic [ref=e112]: Renew Mullvad before Sep 24 2026
+            - 'button "Quick done: Renew Mullvad before Sep 24 2026" [ref=e113] [cursor=pointer]':
+              - img [ref=e114]
+          - listitem [ref=e116]:
+            - 'checkbox "Select task: Ship Pokemon Batch 1 for PSA Grading" [ref=e117]'
+            - generic [ref=e118]: Ship Pokemon Batch 1 for PSA Grading
+            - 'button "Quick done: Ship Pokemon Batch 1 for PSA Grading" [ref=e119] [cursor=pointer]':
+              - img [ref=e120]
+          - listitem [ref=e122]:
+            - 'checkbox "Select task: Finish planning aruba itinerary" [ref=e123]'
+            - generic [ref=e124]: Finish planning aruba itinerary
+            - 'button "Quick done: Finish planning aruba itinerary" [ref=e125] [cursor=pointer]':
+              - img [ref=e126]
+          - listitem [ref=e128]:
+            - 'checkbox "Select task: finish revamping resume" [ref=e129]'
+            - generic [ref=e130]: finish revamping resume
+            - 'button "Quick done: finish revamping resume" [ref=e131] [cursor=pointer]':
+              - img [ref=e132]
+          - listitem [ref=e134]:
+            - 'checkbox "Select task: schedule with progress pt in mechanicsville for cpps pt" [ref=e135]'
+            - generic [ref=e136]: schedule with progress pt in mechanicsville for cpps pt
+            - 'button "Quick done: schedule with progress pt in mechanicsville for cpps pt" [ref=e137] [cursor=pointer]':
+              - img [ref=e138]
+          - listitem [ref=e140]:
+            - 'checkbox "Select task: schedule with inmotion pt in sandston for dry needling" [ref=e141]'
+            - generic [ref=e142]: schedule with inmotion pt in sandston for dry needling
+            - 'button "Quick done: schedule with inmotion pt in sandston for dry needling" [ref=e143] [cursor=pointer]':
+              - img [ref=e144]
+          - listitem [ref=e146]:
+            - 'checkbox "Select task: Determine if I need to pay a 2026 fee or file a registration for LLC" [ref=e147]'
+            - generic [ref=e148]: Determine if I need to pay a 2026 fee or file a registration for LLC
+            - 'button "Quick done: Determine if I need to pay a 2026 fee or file a registration for LLC" [ref=e149] [cursor=pointer]':
+              - img [ref=e150]
+          - listitem [ref=e152]:
+            - 'checkbox "Select task: Continue process of moving rental property into LLC holding" [ref=e153]'
+            - generic [ref=e154]: Continue process of moving rental property into LLC holding
+            - 'button "Quick done: Continue process of moving rental property into LLC holding" [ref=e155] [cursor=pointer]':
+              - img [ref=e156]
+          - listitem [ref=e158]:
+            - 'checkbox "Select task: Create a Project and Scope Improvements to CredRank in task management system" [ref=e159]'
+            - generic [ref=e160]: Create a Project and Scope Improvements to CredRank in task management system
+            - 'button "Quick done: Create a Project and Scope Improvements to CredRank in task management system" [ref=e161] [cursor=pointer]':
+              - img [ref=e162]
+          - listitem [ref=e164]:
+            - 'checkbox "Select task: Finish logging all high value pokemon cards" [ref=e165]'
+            - generic [ref=e166]: Finish logging all high value pokemon cards
+            - 'button "Quick done: Finish logging all high value pokemon cards" [ref=e167] [cursor=pointer]':
+              - img [ref=e168]
+          - listitem [ref=e170]:
+            - 'checkbox "Select task: decide which pokemon cards to send for grading" [ref=e171]'
+            - generic [ref=e172]: decide which pokemon cards to send for grading
+            - 'button "Quick done: decide which pokemon cards to send for grading" [ref=e173] [cursor=pointer]':
+              - img [ref=e174]
+          - listitem [ref=e176]:
+            - 'checkbox "Select task: Shampoo and Sam’s club" [ref=e177]'
+            - generic [ref=e178]: Shampoo and Sam’s club
+            - 'button "Quick done: Shampoo and Sam’s club" [ref=e179] [cursor=pointer]':
+              - img [ref=e180]
+          - listitem [ref=e182]:
+            - 'checkbox "Select task: Send Paula a Kudos for Cameron Thomas that she can forward to Holly/Ryan/etc." [ref=e183]'
+            - generic [ref=e184]: Send Paula a Kudos for Cameron Thomas that she can forward to Holly/Ryan/etc.
+            - 'button "Quick done: Send Paula a Kudos for Cameron Thomas that she can forward to Holly/Ryan/etc." [ref=e185] [cursor=pointer]':
+              - img [ref=e186]
+          - listitem [ref=e188]:
+            - 'checkbox "Select task: Review Alex''s Document" [ref=e189]'
+            - generic [ref=e190]: Review Alex's Document
+            - 'button "Quick done: Review Alex''s Document" [ref=e191] [cursor=pointer]':
+              - img [ref=e192]
+          - listitem [ref=e194]:
+            - 'checkbox "Select task: Check ezCater Settings" [ref=e195]'
+            - generic [ref=e196]: Check ezCater Settings
+            - 'button "Quick done: Check ezCater Settings" [ref=e197] [cursor=pointer]':
+              - img [ref=e198]
+          - listitem [ref=e200]:
+            - 'checkbox "Select task: Add Tim Ferris’s movies" [ref=e201]'
+            - generic [ref=e202]: Add Tim Ferris’s movies
+            - 'button "Quick done: Add Tim Ferris’s movies" [ref=e203] [cursor=pointer]':
+              - img [ref=e204]
+          - listitem [ref=e206]:
+            - 'checkbox "Select task: Get Code Working on Mock Sonar Data to run CPA for metrics" [ref=e207]'
+            - generic [ref=e208]: Get Code Working on Mock Sonar Data to run CPA for metrics
+            - 'button "Quick done: Get Code Working on Mock Sonar Data to run CPA for metrics" [ref=e209] [cursor=pointer]':
+              - img [ref=e210]
+          - listitem [ref=e212]:
+            - 'checkbox "Select task: Link Sonar Data to NMID (Eden was experiencing this problem when testing the PTA)" [ref=e213]'
+            - generic [ref=e214]: Link Sonar Data to NMID (Eden was experiencing this problem when testing the PTA)
+            - 'button "Quick done: Link Sonar Data to NMID (Eden was experiencing this problem when testing the PTA)" [ref=e215] [cursor=pointer]':
+              - img [ref=e216]
+          - listitem [ref=e218]:
+            - 'checkbox "Select task: Process Supporting Our Leaders Sync, Come up with Actions for me and plan for next time" [ref=e219]'
+            - generic [ref=e220]: Process Supporting Our Leaders Sync, Come up with Actions for me and plan for next time
+            - 'button "Quick done: Process Supporting Our Leaders Sync, Come up with Actions for me and plan for next time" [ref=e221] [cursor=pointer]':
+              - img [ref=e222]
+          - listitem [ref=e224]:
+            - 'checkbox "Select task: Follow up with Brian on mentoring on breadth and availability and coverage" [ref=e225]'
+            - generic [ref=e226]: Follow up with Brian on mentoring on breadth and availability and coverage
+            - 'button "Quick done: Follow up with Brian on mentoring on breadth and availability and coverage" [ref=e227] [cursor=pointer]':
+              - img [ref=e228]
+          - listitem [ref=e230]:
+            - 'checkbox "Select task: Set up next mentoring with Kerri Anne" [ref=e231]'
+            - generic [ref=e232]: Set up next mentoring with Kerri Anne
+            - 'button "Quick done: Set up next mentoring with Kerri Anne" [ref=e233] [cursor=pointer]':
+              - img [ref=e234]
+          - listitem [ref=e236]:
+            - 'checkbox "Select task: Make vacuum not mop" [ref=e237]'
+            - generic [ref=e238]: Make vacuum not mop
+            - 'button "Quick done: Make vacuum not mop" [ref=e239] [cursor=pointer]':
+              - img [ref=e240]
+          - listitem [ref=e242]:
+            - 'checkbox "Select task: Review Taxes we Charge at all 3 stores, see if we can do any better" [ref=e243]'
+            - generic [ref=e244]: Review Taxes we Charge at all 3 stores, see if we can do any better
+            - 'button "Quick done: Review Taxes we Charge at all 3 stores, see if we can do any better" [ref=e245] [cursor=pointer]':
+              - img [ref=e246]
+          - listitem [ref=e248]:
+            - 'checkbox "Select task: Respond to Madison Estates HOA Email" [ref=e249]'
+            - generic [ref=e250]: Respond to Madison Estates HOA Email
+            - 'button "Quick done: Respond to Madison Estates HOA Email" [ref=e251] [cursor=pointer]':
+              - img [ref=e252]
+          - listitem [ref=e254]:
+            - 'checkbox "Select task: Review Ajay''s Document on Behavior Driven Remediation Engine" [ref=e255]'
+            - generic [ref=e256]: Review Ajay's Document on Behavior Driven Remediation Engine
+            - 'button "Quick done: Review Ajay''s Document on Behavior Driven Remediation Engine" [ref=e257] [cursor=pointer]':
+              - img [ref=e258]
+          - listitem [ref=e260]:
+            - 'checkbox "Select task: Create the Script to Run CPA Agent over Ground Truth Data in Acropolis" [ref=e261]'
+            - generic [ref=e262]: Create the Script to Run CPA Agent over Ground Truth Data in Acropolis
+            - 'button "Quick done: Create the Script to Run CPA Agent over Ground Truth Data in Acropolis" [ref=e263] [cursor=pointer]':
+              - img [ref=e264]
+          - listitem [ref=e266]:
+            - 'checkbox "Select task: Figure Out How to Fix Torus Access" [ref=e267]'
+            - generic [ref=e268]: Figure Out How to Fix Torus Access
+            - 'button "Quick done: Figure Out How to Fix Torus Access" [ref=e269] [cursor=pointer]':
+              - img [ref=e270]
+          - listitem [ref=e272]:
+            - 'checkbox "Select task: Find and Apply for Jobs" [ref=e273]'
+            - generic [ref=e274]: Find and Apply for Jobs
+            - 'button "Quick done: Find and Apply for Jobs" [ref=e275] [cursor=pointer]':
+              - img [ref=e276]
+          - listitem [ref=e278]:
+            - 'checkbox "Select task: Get last few Kusto clusters unblocked for phishing triage agent" [ref=e279]'
+            - generic [ref=e280]: Get last few Kusto clusters unblocked for phishing triage agent
+            - 'button "Quick done: Get last few Kusto clusters unblocked for phishing triage agent" [ref=e281] [cursor=pointer]':
+              - img [ref=e282]
+          - listitem [ref=e284]:
+            - 'checkbox "Select task: What do Mohit and Bhakti need in a \"Data Contract\" for Verdict Agent" [ref=e285]'
+            - generic [ref=e286]: What do Mohit and Bhakti need in a "Data Contract" for Verdict Agent
+            - 'button "Quick done: What do Mohit and Bhakti need in a \"Data Contract\" for Verdict Agent" [ref=e287] [cursor=pointer]':
+              - img [ref=e288]
+          - listitem [ref=e290]:
+            - 'checkbox "Select task: Talk to Bhakti and Madhusha about relationship with other teams" [ref=e291]'
+            - generic [ref=e292]: Talk to Bhakti and Madhusha about relationship with other teams
+            - 'button "Quick done: Talk to Bhakti and Madhusha about relationship with other teams" [ref=e293] [cursor=pointer]':
+              - img [ref=e294]
+          - listitem [ref=e296]:
+            - 'checkbox "Select task: Come up with plan for taxes including donations" [ref=e297]'
+            - generic [ref=e298]: Come up with plan for taxes including donations
+            - 'button "Quick done: Come up with plan for taxes including donations" [ref=e299] [cursor=pointer]':
+              - img [ref=e300]
+          - listitem [ref=e302]:
+            - 'checkbox "Select task: Pull sweatshirts to donate" [ref=e303]'
+            - generic [ref=e304]: Pull sweatshirts to donate
+            - 'button "Quick done: Pull sweatshirts to donate" [ref=e305] [cursor=pointer]':
+              - img [ref=e306]
+          - listitem [ref=e308]:
+            - 'checkbox "Select task: Pull tshirts to donate" [ref=e309]'
+            - generic [ref=e310]: Pull tshirts to donate
+            - 'button "Quick done: Pull tshirts to donate" [ref=e311] [cursor=pointer]':
+              - img [ref=e312]
+          - listitem [ref=e314]:
+            - 'checkbox "Select task: Torrent Chuck" [ref=e315]'
+            - generic [ref=e316]: Torrent Chuck
+            - 'button "Quick done: Torrent Chuck" [ref=e317] [cursor=pointer]':
+              - img [ref=e318]
+          - listitem [ref=e320]:
+            - 'checkbox "Select task: CPA Repo with Viewer for Results" [ref=e321]'
+            - generic [ref=e322]: CPA Repo with Viewer for Results
+            - 'button "Quick done: CPA Repo with Viewer for Results" [ref=e323] [cursor=pointer]':
+              - img [ref=e324]
+          - listitem [ref=e326]:
+            - 'checkbox "Select task: When to do septic" [ref=e327]'
+            - generic [ref=e328]: When to do septic
+            - 'button "Quick done: When to do septic" [ref=e329] [cursor=pointer]':
+              - img [ref=e330]
+          - listitem [ref=e332]:
+            - 'checkbox "Select task: When to seal driveway" [ref=e333]'
+            - generic [ref=e334]: When to seal driveway
+            - 'button "Quick done: When to seal driveway" [ref=e335] [cursor=pointer]':
+              - img [ref=e336]
+          - listitem [ref=e338]:
+            - 'checkbox "Select task: Get YNAB Cleaned Up" [ref=e339]'
+            - generic [ref=e340]: Get YNAB Cleaned Up
+            - 'button "Quick done: Get YNAB Cleaned Up" [ref=e341] [cursor=pointer]':
+              - img [ref=e342]
+          - listitem [ref=e344]:
+            - 'checkbox "Select task: Have Sara call about room block" [ref=e345]'
+            - generic [ref=e346]: Have Sara call about room block
+            - 'button "Quick done: Have Sara call about room block" [ref=e347] [cursor=pointer]':
+              - img [ref=e348]
+          - listitem [ref=e350]:
+            - 'checkbox "Select task: Try Codex/5.3/OpenCode" [ref=e351]'
+            - generic [ref=e352]: Try Codex/5.3/OpenCode
+            - 'button "Quick done: Try Codex/5.3/OpenCode" [ref=e353] [cursor=pointer]':
+              - img [ref=e354]
+          - listitem [ref=e356]:
+            - 'checkbox "Select task: Come up with plan for ER bill" [ref=e357]'
+            - generic [ref=e358]: Come up with plan for ER bill
+            - 'button "Quick done: Come up with plan for ER bill" [ref=e359] [cursor=pointer]':
+              - img [ref=e360]
+          - listitem [ref=e362]:
+            - 'checkbox "Select task: Call Dr Walker for new wegovy script" [ref=e363]'
+            - generic [ref=e364]: Call Dr Walker for new wegovy script
+            - 'button "Quick done: Call Dr Walker for new wegovy script" [ref=e365] [cursor=pointer]':
+              - img [ref=e366]
+          - listitem [ref=e368]:
+            - 'checkbox "Select task: Run CPA Test" [ref=e369]'
+            - generic [ref=e370]: Run CPA Test
+            - 'button "Quick done: Run CPA Test" [ref=e371] [cursor=pointer]':
+              - img [ref=e372]
+          - listitem [ref=e374]:
+            - 'checkbox "Select task: Ask Allison About Ingressing Code" [ref=e375]'
+            - generic [ref=e376]: Ask Allison About Ingressing Code
+            - 'button "Quick done: Ask Allison About Ingressing Code" [ref=e377] [cursor=pointer]':
+              - img [ref=e378]
+          - listitem [ref=e380]:
+            - 'checkbox "Select task: Close All IcMs" [ref=e381]'
+            - generic [ref=e382]: Close All IcMs
+            - 'button "Quick done: Close All IcMs" [ref=e383] [cursor=pointer]':
+              - img [ref=e384]
+          - listitem [ref=e386]:
+            - 'checkbox "Select task: Decide on Magic Keyboard vs Magic Keyboard case" [ref=e387]'
+            - generic [ref=e388]: Decide on Magic Keyboard vs Magic Keyboard case
+            - 'button "Quick done: Decide on Magic Keyboard vs Magic Keyboard case" [ref=e389] [cursor=pointer]':
+              - img [ref=e390]
+          - listitem [ref=e392]:
+            - 'checkbox "Select task: Figure out what to do with pc builds" [ref=e393]'
+            - generic [ref=e394]: Figure out what to do with pc builds
+            - 'button "Quick done: Figure out what to do with pc builds" [ref=e395] [cursor=pointer]':
+              - img [ref=e396]
+          - listitem [ref=e398]:
+            - 'checkbox "Select task: Add Summaries from Handover Call to Verdict Agent Loop Doc" [ref=e399]'
+            - generic [ref=e400]: Add Summaries from Handover Call to Verdict Agent Loop Doc
+            - 'button "Quick done: Add Summaries from Handover Call to Verdict Agent Loop Doc" [ref=e401] [cursor=pointer]':
+              - img [ref=e402]
+          - listitem [ref=e404]:
+            - 'checkbox "Select task: Be Better About Sprint Planning - Send Verdict Agent Sprint Plans to Paula" [ref=e405]'
+            - generic [ref=e406]: Be Better About Sprint Planning - Send Verdict Agent Sprint Plans to Paula
+            - 'button "Quick done: Be Better About Sprint Planning - Send Verdict Agent Sprint Plans to Paula" [ref=e407] [cursor=pointer]':
+              - img [ref=e408]
+          - listitem [ref=e410]:
+            - 'checkbox "Select task: Review YouTube tv subscription and packages" [ref=e411]'
+            - generic [ref=e412]: Review YouTube tv subscription and packages
+            - 'button "Quick done: Review YouTube tv subscription and packages" [ref=e413] [cursor=pointer]':
+              - img [ref=e414]
+          - listitem [ref=e416]:
+            - 'checkbox "Select task: Move ~$5k" [ref=e417]'
+            - generic [ref=e418]: Move ~$5k
+            - 'button "Quick done: Move ~$5k" [ref=e419] [cursor=pointer]':
+              - img [ref=e420]
+          - listitem [ref=e422]:
+            - 'checkbox "Select task: EMAIL CROSSINGS GUY" [ref=e423]'
+            - generic [ref=e424]: EMAIL CROSSINGS GUY
+            - 'button "Quick done: EMAIL CROSSINGS GUY" [ref=e425] [cursor=pointer]':
+              - img [ref=e426]
+          - listitem [ref=e428]:
+            - 'checkbox "Select task: Update Paula''s Slides in advance of team meeting" [ref=e429]'
+            - generic [ref=e430]: Update Paula's Slides in advance of team meeting
+            - 'button "Quick done: Update Paula''s Slides in advance of team meeting" [ref=e431] [cursor=pointer]':
+              - img [ref=e432]
+          - listitem [ref=e434]:
+            - 'checkbox "Select task: Mouth tape" [ref=e435]'
+            - generic [ref=e436]: Mouth tape
+            - 'button "Quick done: Mouth tape" [ref=e437] [cursor=pointer]':
+              - img [ref=e438]
+          - listitem [ref=e440]:
+            - 'checkbox "Select task: Check/schedule PT appointments" [ref=e441]'
+            - generic [ref=e442]: Check/schedule PT appointments
+            - 'button "Quick done: Check/schedule PT appointments" [ref=e443] [cursor=pointer]':
+              - img [ref=e444]
+          - listitem [ref=e446]:
+            - 'checkbox "Select task: Check Dennis letter deliveru" [ref=e447]'
+            - generic [ref=e448]: Check Dennis letter deliveru
+            - 'button "Quick done: Check Dennis letter deliveru" [ref=e449] [cursor=pointer]':
+              - img [ref=e450]
+          - listitem [ref=e452]:
+            - 'checkbox "Select task: Consolidate saved reddits for verdict agent" [ref=e453]'
+            - generic [ref=e454]: Consolidate saved reddits for verdict agent
+            - 'button "Quick done: Consolidate saved reddits for verdict agent" [ref=e455] [cursor=pointer]':
+              - img [ref=e456]
+          - listitem [ref=e458]:
+            - 'checkbox "Select task: Get Radarr Sonarr VPN Running" [ref=e459]'
+            - generic [ref=e460]: Get Radarr Sonarr VPN Running
+            - 'button "Quick done: Get Radarr Sonarr VPN Running" [ref=e461] [cursor=pointer]':
+              - img [ref=e462]
+          - listitem [ref=e464]:
+            - 'checkbox "Select task: Order Storage for Plex (test existing first)" [ref=e465]'
+            - generic [ref=e466]: Order Storage for Plex (test existing first)
+            - 'button "Quick done: Order Storage for Plex (test existing first)" [ref=e467] [cursor=pointer]':
+              - img [ref=e468]
+          - listitem [ref=e470]:
+            - 'checkbox "Select task: Georgios prefers meetings 2:30pm EST or later, so move meetings" [ref=e471]'
+            - generic [ref=e472]: Georgios prefers meetings 2:30pm EST or later, so move meetings
+            - 'button "Quick done: Georgios prefers meetings 2:30pm EST or later, so move meetings" [ref=e473] [cursor=pointer]':
+              - img [ref=e474]
+          - listitem [ref=e476]:
+            - 'checkbox "Select task: Create Exception According to Allison''s Directions and Get Allison and Rico''s Approval" [ref=e477]'
+            - generic [ref=e478]: Create Exception According to Allison's Directions and Get Allison and Rico's Approval
+            - 'button "Quick done: Create Exception According to Allison''s Directions and Get Allison and Rico''s Approval" [ref=e479] [cursor=pointer]':
+              - img [ref=e480]
+          - listitem [ref=e482]:
+            - 'checkbox "Select task: Get Paula and Evgeny and Myself to sign off on Jiangbi''s evaluation document so she can close the work item" [ref=e483]'
+            - generic [ref=e484]: Get Paula and Evgeny and Myself to sign off on Jiangbi's evaluation document so she can close the work item
+            - 'button "Quick done: Get Paula and Evgeny and Myself to sign off on Jiangbi''s evaluation document so she can close the work item" [ref=e485] [cursor=pointer]':
+              - img [ref=e486]
+          - listitem [ref=e488]:
+            - 'checkbox "Select task: Review and Close on Customer Feedback Design with Paula and Evgeny" [ref=e489]'
+            - generic [ref=e490]: Review and Close on Customer Feedback Design with Paula and Evgeny
+            - 'button "Quick done: Review and Close on Customer Feedback Design with Paula and Evgeny" [ref=e491] [cursor=pointer]':
+              - img [ref=e492]
+          - listitem [ref=e494]:
+            - 'checkbox "Select task: Review AI Phishing Protection Team Sync Recording" [ref=e495]'
+            - generic [ref=e496]: Review AI Phishing Protection Team Sync Recording
+            - 'button "Quick done: Review AI Phishing Protection Team Sync Recording" [ref=e497] [cursor=pointer]':
+              - img [ref=e498]
+          - listitem [ref=e500]:
+            - 'checkbox "Select task: Figure out how to use 5.3-codex" [ref=e501]'
+            - generic [ref=e502]: Figure out how to use 5.3-codex
+            - 'button "Quick done: Figure out how to use 5.3-codex" [ref=e503] [cursor=pointer]':
+              - img [ref=e504]
+          - listitem [ref=e506]:
+            - 'checkbox "Select task: Pick garage motorized or winch storage shelving" [ref=e507]'
+            - generic [ref=e508]: Pick garage motorized or winch storage shelving
+            - 'button "Quick done: Pick garage motorized or winch storage shelving" [ref=e509] [cursor=pointer]':
+              - img [ref=e510]
+          - listitem [ref=e512]:
+            - 'checkbox "Select task: Order garage storage shelving" [ref=e513]'
+            - generic [ref=e514]: Order garage storage shelving
+            - 'button "Quick done: Order garage storage shelving" [ref=e515] [cursor=pointer]':
+              - img [ref=e516]
+          - listitem [ref=e518]:
+            - 'checkbox "Select task: Return Cameron’s AirPods" [ref=e519]'
+            - generic [ref=e520]: Return Cameron’s AirPods
+            - 'button "Quick done: Return Cameron’s AirPods" [ref=e521] [cursor=pointer]':
+              - img [ref=e522]
+          - listitem [ref=e524]:
+            - 'checkbox "Select task: Email crossings guy" [ref=e525]'
+            - generic [ref=e526]: Email crossings guy
+            - 'button "Quick done: Email crossings guy" [ref=e527] [cursor=pointer]':
+              - img [ref=e528]
+          - listitem [ref=e530]:
+            - 'checkbox "Select task: Review AI tooling used for work" [ref=e531]'
+            - generic [ref=e532]: Review AI tooling used for work
+            - 'button "Quick done: Review AI tooling used for work" [ref=e533] [cursor=pointer]':
+              - img [ref=e534]
+          - listitem [ref=e536]:
+            - 'checkbox "Select task: Review AI tooling used for personal" [ref=e537]'
+            - generic [ref=e538]: Review AI tooling used for personal
+            - 'button "Quick done: Review AI tooling used for personal" [ref=e539] [cursor=pointer]':
+              - img [ref=e540]
+          - listitem [ref=e542]:
+            - 'checkbox "Select task: Add Onboarding to MDO Sonar Wiki to Verdict Agent Wiki" [ref=e543]'
+            - generic [ref=e544]: Add Onboarding to MDO Sonar Wiki to Verdict Agent Wiki
+            - 'button "Quick done: Add Onboarding to MDO Sonar Wiki to Verdict Agent Wiki" [ref=e545] [cursor=pointer]':
+              - img [ref=e546]
+          - listitem [ref=e548]:
+            - 'checkbox "Select task: Complete the Acropolis User Access Review For Security Research and MDO Sonar personas" [ref=e549]'
+            - generic [ref=e550]: Complete the Acropolis User Access Review For Security Research and MDO Sonar personas
+            - 'button "Quick done: Complete the Acropolis User Access Review For Security Research and MDO Sonar personas" [ref=e551] [cursor=pointer]':
+              - img [ref=e552]
+          - listitem [ref=e554]:
+            - 'checkbox "Select task: Clean Up Google Drive Folders and Repair them after Clawdcode messup" [ref=e555]'
+            - generic [ref=e556]: Clean Up Google Drive Folders and Repair them after Clawdcode messup
+            - 'button "Quick done: Clean Up Google Drive Folders and Repair them after Clawdcode messup" [ref=e557] [cursor=pointer]':
+              - img [ref=e558]
+          - listitem [ref=e560]:
+            - 'checkbox "Select task: Disable openclaw Google access" [ref=e561]'
+            - generic [ref=e562]: Disable openclaw Google access
+            - 'button "Quick done: Disable openclaw Google access" [ref=e563] [cursor=pointer]':
+              - img [ref=e564]
+          - listitem [ref=e566]:
+            - 'checkbox "Select task: Find a Good way to track my activities throughout the day to make for better 1:1''s with Paula and better Connects/Reviews" [ref=e567]'
+            - generic [ref=e568]: Find a Good way to track my activities throughout the day to make for better 1:1's with Paula and better Connects/Reviews
+            - 'button "Quick done: Find a Good way to track my activities throughout the day to make for better 1:1''s with Paula and better Connects/Reviews" [ref=e569] [cursor=pointer]':
+              - img [ref=e570]
+          - listitem [ref=e572]:
+            - 'checkbox "Select task: Update Resume" [ref=e573]'
+            - generic [ref=e574]: Update Resume
+            - 'button "Quick done: Update Resume" [ref=e575] [cursor=pointer]':
+              - img [ref=e576]
+          - listitem [ref=e578]:
+            - 'checkbox "Select task: Update Microsoft Career Profile" [ref=e579]'
+            - generic [ref=e580]: Update Microsoft Career Profile
+            - 'button "Quick done: Update Microsoft Career Profile" [ref=e581] [cursor=pointer]':
+              - img [ref=e582]
+          - listitem [ref=e584]:
+            - 'checkbox "Select task: Apply for Internal Rols" [ref=e585]'
+            - generic [ref=e586]: Apply for Internal Rols
+            - 'button "Quick done: Apply for Internal Rols" [ref=e587] [cursor=pointer]':
+              - img [ref=e588]
+          - listitem [ref=e590]:
+            - 'checkbox "Select task: Get Larry to Hire People" [ref=e591]'
+            - generic [ref=e592]: Get Larry to Hire People
+            - 'button "Quick done: Get Larry to Hire People" [ref=e593] [cursor=pointer]':
+              - img [ref=e594]
+          - listitem [ref=e596]:
+            - 'checkbox "Select task: Schedule With Jamie about providing value for managers in two different places in two different ways" [ref=e597]'
+            - generic [ref=e598]: Schedule With Jamie about providing value for managers in two different places in two different ways
+            - 'button "Quick done: Schedule With Jamie about providing value for managers in two different places in two different ways" [ref=e599] [cursor=pointer]':
+              - img [ref=e600]
+          - listitem [ref=e602]:
+            - 'checkbox "Select task: Send a message to Tanmay regarding his thoughts on Culture being provided" [ref=e603]'
+            - generic [ref=e604]: Send a message to Tanmay regarding his thoughts on Culture being provided
+            - 'button "Quick done: Send a message to Tanmay regarding his thoughts on Culture being provided" [ref=e605] [cursor=pointer]':
+              - img [ref=e606]
+          - listitem [ref=e608]:
+            - 'checkbox "Select task: Reach out to IDC and ILDC contacts to solicit more membership for the supporting our leaders mtp-r v-team that I''m running" [ref=e609]'
+            - generic [ref=e610]: Reach out to IDC and ILDC contacts to solicit more membership for the supporting our leaders mtp-r v-team that I'm running
+            - 'button "Quick done: Reach out to IDC and ILDC contacts to solicit more membership for the supporting our leaders mtp-r v-team that I''m running" [ref=e611] [cursor=pointer]':
+              - img [ref=e612]
+          - listitem [ref=e614]:
+            - 'checkbox "Select task: Come Up with Plan for Reducing Liability for ER Bill" [ref=e615]'
+            - generic [ref=e616]: Come Up with Plan for Reducing Liability for ER Bill
+            - 'button "Quick done: Come Up with Plan for Reducing Liability for ER Bill" [ref=e617] [cursor=pointer]':
+              - img [ref=e618]
+          - listitem [ref=e620]:
+            - 'checkbox "Select task: Review this week''s mtp-r leader support v-team notes and plan next week''s async session" [ref=e621]'
+            - generic [ref=e622]: Review this week's mtp-r leader support v-team notes and plan next week's async session
+            - 'button "Quick done: Review this week''s mtp-r leader support v-team notes and plan next week''s async session" [ref=e623] [cursor=pointer]':
+              - img [ref=e624]
+          - listitem [ref=e626]:
+            - 'checkbox "Select task: Review Evgeny and Alan''s Agent Efficacy Measurement Document" [ref=e627]'
+            - generic [ref=e628]: Review Evgeny and Alan's Agent Efficacy Measurement Document
+            - 'button "Quick done: Review Evgeny and Alan''s Agent Efficacy Measurement Document" [ref=e629] [cursor=pointer]':
+              - img [ref=e630]
+          - listitem [ref=e632]:
+            - 'checkbox "Select task: Get Georgios Access to Agent Experiments" [ref=e633]'
+            - generic [ref=e634]: Get Georgios Access to Agent Experiments
+            - 'button "Quick done: Get Georgios Access to Agent Experiments" [ref=e635] [cursor=pointer]':
+              - img [ref=e636]
+          - listitem [ref=e638]:
+            - 'checkbox "Select task: Find a Way to Ingress Grading Agent Code to Acropolis" [ref=e639]'
+            - generic [ref=e640]: Find a Way to Ingress Grading Agent Code to Acropolis
+            - 'button "Quick done: Find a Way to Ingress Grading Agent Code to Acropolis" [ref=e641] [cursor=pointer]':
+              - img [ref=e642]
+          - listitem [ref=e644]:
+            - 'checkbox "Select task: Get Some Synthetic Sonar Samples from Andy to use on Corp or SAW Dev for Verdict AGent v1" [ref=e645]'
+            - generic [ref=e646]: Get Some Synthetic Sonar Samples from Andy to use on Corp or SAW Dev for Verdict AGent v1
+            - 'button "Quick done: Get Some Synthetic Sonar Samples from Andy to use on Corp or SAW Dev for Verdict AGent v1" [ref=e647] [cursor=pointer]':
+              - img [ref=e648]
+          - listitem [ref=e650]:
+            - 'checkbox "Select task: Design Verdict Agent v2 based on Yafet, Arun, and Ran''s thoughts" [ref=e651]'
+            - generic [ref=e652]: Design Verdict Agent v2 based on Yafet, Arun, and Ran's thoughts
+            - 'button "Quick done: Design Verdict Agent v2 based on Yafet, Arun, and Ran''s thoughts" [ref=e653] [cursor=pointer]':
+              - img [ref=e654]
+          - listitem [ref=e656]:
+            - 'checkbox "Select task: Validate Kusto Clusters that I can hit from Acropolis and update tracking spreadsheet for Paula" [ref=e657]'
+            - generic [ref=e658]: Validate Kusto Clusters that I can hit from Acropolis and update tracking spreadsheet for Paula
+            - 'button "Quick done: Validate Kusto Clusters that I can hit from Acropolis and update tracking spreadsheet for Paula" [ref=e659] [cursor=pointer]':
+              - img [ref=e660]
+          - listitem [ref=e662]:
+            - 'checkbox "Select task: Add Form Capability to Dana and Uma''s Document for supporting our leaders working group" [ref=e663]'
+            - generic [ref=e664]: Add Form Capability to Dana and Uma's Document for supporting our leaders working group
+            - 'button "Quick done: Add Form Capability to Dana and Uma''s Document for supporting our leaders working group" [ref=e665] [cursor=pointer]':
+              - img [ref=e666]
+          - listitem [ref=e668]:
+            - 'checkbox "Select task: URGENT: Delightree Training" [ref=e669]'
+            - generic [ref=e670]: "URGENT: Delightree Training"
+            - 'button "Quick done: URGENT: Delightree Training" [ref=e671] [cursor=pointer]':
+              - img [ref=e672]
+          - listitem [ref=e674]:
+            - 'checkbox "Select task: Review the Meta Model Document from Paula" [ref=e675]'
+            - generic [ref=e676]: Review the Meta Model Document from Paula
+            - 'button "Quick done: Review the Meta Model Document from Paula" [ref=e677] [cursor=pointer]':
+              - img [ref=e678]
+          - listitem [ref=e680]:
+            - 'checkbox "Select task: Add Capabilities Enabled for Acropolis Kusto Clusters for Paula''s Update" [ref=e681]'
+            - generic [ref=e682]: Add Capabilities Enabled for Acropolis Kusto Clusters for Paula's Update
+            - 'button "Quick done: Add Capabilities Enabled for Acropolis Kusto Clusters for Paula''s Update" [ref=e683] [cursor=pointer]':
+              - img [ref=e684]
+          - listitem [ref=e686]:
+            - 'checkbox "Select task: Follow Up on All Kusto Cluster Onboarding to get Kusto Access for testing Fuchen''s model for phishing triage agent" [ref=e687]'
+            - generic [ref=e688]: Follow Up on All Kusto Cluster Onboarding to get Kusto Access for testing Fuchen's model for phishing triage agent
+            - 'button "Quick done: Follow Up on All Kusto Cluster Onboarding to get Kusto Access for testing Fuchen''s model for phishing triage agent" [ref=e689] [cursor=pointer]':
+              - img [ref=e690]
+          - listitem [ref=e692]:
+            - 'checkbox "Select task: Order magnetic charger holders for Sara''s nightstand" [ref=e693]'
+            - generic [ref=e694]: Order magnetic charger holders for Sara's nightstand
+            - 'button "Quick done: Order magnetic charger holders for Sara''s nightstand" [ref=e695] [cursor=pointer]':
+              - img [ref=e696]
+          - listitem [ref=e698]:
+            - 'checkbox "Select task: Update Yafet''s Document with Verdict Lifecycle and Who will access the data" [ref=e699]'
+            - generic [ref=e700]: Update Yafet's Document with Verdict Lifecycle and Who will access the data
+            - 'button "Quick done: Update Yafet''s Document with Verdict Lifecycle and Who will access the data" [ref=e701] [cursor=pointer]':
+              - img [ref=e702]
+          - listitem [ref=e704]:
+            - 'checkbox "Select task: Confirm with Ran who will set up meeting with our Eng. + Jiangbi and Peter to discuss consumption side questions" [ref=e705]'
+            - generic [ref=e706]: Confirm with Ran who will set up meeting with our Eng. + Jiangbi and Peter to discuss consumption side questions
+            - 'button "Quick done: Confirm with Ran who will set up meeting with our Eng. + Jiangbi and Peter to discuss consumption side questions" [ref=e707] [cursor=pointer]':
+              - img [ref=e708]
+          - listitem [ref=e710]:
+            - 'checkbox "Select task: Set Up Bi-Weekly with Georgios" [ref=e711]'
+            - generic [ref=e712]: Set Up Bi-Weekly with Georgios
+            - 'button "Quick done: Set Up Bi-Weekly with Georgios" [ref=e713] [cursor=pointer]':
+              - img [ref=e714]
+          - listitem [ref=e716]:
+            - 'checkbox "Select task: Come up with Prompt Repository Plan" [ref=e717]'
+            - generic [ref=e718]: Come up with Prompt Repository Plan
+            - 'button "Quick done: Come up with Prompt Repository Plan" [ref=e719] [cursor=pointer]':
+              - img [ref=e720]
+          - listitem [ref=e722]:
+            - 'checkbox "Select task: Check on newsletter content people" [ref=e723]'
+            - generic [ref=e724]: Check on newsletter content people
+            - 'button "Quick done: Check on newsletter content people" [ref=e725] [cursor=pointer]':
+              - img [ref=e726]
+          - listitem [ref=e728]:
+            - 'checkbox "Select task: Ensure Cameron and Larry are Straight on Aaron''s Notes and Updates" [ref=e729]'
+            - generic [ref=e730]: Ensure Cameron and Larry are Straight on Aaron's Notes and Updates
+            - 'button "Quick done: Ensure Cameron and Larry are Straight on Aaron''s Notes and Updates" [ref=e731] [cursor=pointer]':
+              - img [ref=e732]
+          - listitem [ref=e734]:
+            - 'checkbox "Select task: Book Airbnb for tech Georgia tech" [ref=e735]'
+            - generic [ref=e736]: Book Airbnb for tech Georgia tech
+            - 'button "Quick done: Book Airbnb for tech Georgia tech" [ref=e737] [cursor=pointer]':
+              - img [ref=e738]
+          - listitem [ref=e740]:
+            - 'checkbox "Select task: Build Knowledge Graph Skill for Clawdbot to Manage Work Relationships and Comms" [ref=e741]'
+            - generic [ref=e742]: Build Knowledge Graph Skill for Clawdbot to Manage Work Relationships and Comms
+            - 'button "Quick done: Build Knowledge Graph Skill for Clawdbot to Manage Work Relationships and Comms" [ref=e743] [cursor=pointer]':
+              - img [ref=e744]
+          - listitem [ref=e746]:
+            - 'checkbox "Select task: Brainstorm next skills for moltbot" [ref=e747]'
+            - generic [ref=e748]: Brainstorm next skills for moltbot
+            - 'button "Quick done: Brainstorm next skills for moltbot" [ref=e749] [cursor=pointer]':
+              - img [ref=e750]
+          - listitem [ref=e752]:
+            - 'checkbox "Select task: Update Kusto Tracker with Kusto Clusters that Have been added to Acropolis for Phishing Triage AGent" [ref=e753]'
+            - generic [ref=e754]: Update Kusto Tracker with Kusto Clusters that Have been added to Acropolis for Phishing Triage AGent
+            - 'button "Quick done: Update Kusto Tracker with Kusto Clusters that Have been added to Acropolis for Phishing Triage AGent" [ref=e755] [cursor=pointer]':
+              - img [ref=e756]
+          - listitem [ref=e758]:
+            - 'checkbox "Select task: Create a Persistent Storage Location/File on SAW and Store AEON Access Instructions and Acropolis JIT Elevation for Sonar Data Instructions" [ref=e759]'
+            - generic [ref=e760]: Create a Persistent Storage Location/File on SAW and Store AEON Access Instructions and Acropolis JIT Elevation for Sonar Data Instructions
+            - 'button "Quick done: Create a Persistent Storage Location/File on SAW and Store AEON Access Instructions and Acropolis JIT Elevation for Sonar Data Instructions" [ref=e761] [cursor=pointer]':
+              - img [ref=e762]
+          - listitem [ref=e764]:
+            - 'checkbox "Select task: Set Up Clean Eatz Print Store Accoutn" [ref=e765]'
+            - generic [ref=e766]: Set Up Clean Eatz Print Store Accoutn
+            - 'button "Quick done: Set Up Clean Eatz Print Store Accoutn" [ref=e767] [cursor=pointer]':
+              - img [ref=e768]
+          - listitem [ref=e770]:
+            - 'checkbox "Select task: Crawl r/AI_Agents and come up with post" [ref=e771]'
+            - generic [ref=e772]: Crawl r/AI_Agents and come up with post
+            - 'button "Quick done: Crawl r/AI_Agents and come up with post" [ref=e773] [cursor=pointer]':
+              - img [ref=e774]
+          - listitem [ref=e776]:
+            - 'checkbox "Select task: Langgraph tutorial" [ref=e777]'
+            - generic [ref=e778]: Langgraph tutorial
+            - 'button "Quick done: Langgraph tutorial" [ref=e779] [cursor=pointer]':
+              - img [ref=e780]
+          - listitem [ref=e782]:
+            - 'checkbox "Select task: Compare PTA and AIR Verdicts esp. with ground truth" [ref=e783]'
+            - generic [ref=e784]: Compare PTA and AIR Verdicts esp. with ground truth
+            - 'button "Quick done: Compare PTA and AIR Verdicts esp. with ground truth" [ref=e785] [cursor=pointer]':
+              - img [ref=e786]
+          - listitem [ref=e788]:
+            - 'checkbox "Select task: Review the Role Guide Created by Dana and Uma" [ref=e789]'
+            - generic [ref=e790]: Review the Role Guide Created by Dana and Uma
+            - 'button "Quick done: Review the Role Guide Created by Dana and Uma" [ref=e791] [cursor=pointer]':
+              - img [ref=e792]
+          - listitem [ref=e794]:
+            - 'checkbox "Select task: Turn Yafet and Arun Docs into Design Guidance" [ref=e795]'
+            - generic [ref=e796]: Turn Yafet and Arun Docs into Design Guidance
+            - 'button "Quick done: Turn Yafet and Arun Docs into Design Guidance" [ref=e797] [cursor=pointer]':
+              - img [ref=e798]
+          - listitem [ref=e800]:
+            - 'checkbox "Select task: Review Where Kim tagged Me and Andrea" [ref=e801]'
+            - generic [ref=e802]: Review Where Kim tagged Me and Andrea
+            - 'button "Quick done: Review Where Kim tagged Me and Andrea" [ref=e803] [cursor=pointer]':
+              - img [ref=e804]
+          - listitem [ref=e806]:
+            - 'checkbox "Select task: Flowers for Sara" [ref=e807]'
+            - generic [ref=e808]: Flowers for Sara
+            - 'button "Quick done: Flowers for Sara" [ref=e809] [cursor=pointer]':
+              - img [ref=e810]
+          - listitem [ref=e812]:
+            - 'checkbox "Select task: Send Missed Emails and Explanations to Ran" [ref=e813]'
+            - generic [ref=e814]: Send Missed Emails and Explanations to Ran
+            - 'button "Quick done: Send Missed Emails and Explanations to Ran" [ref=e815] [cursor=pointer]':
+              - img [ref=e816]
+          - listitem [ref=e818]:
+            - 'checkbox "Select task: Look into TurboTax settlement" [ref=e819]'
+            - generic [ref=e820]: Look into TurboTax settlement
+            - 'button "Quick done: Look into TurboTax settlement" [ref=e821] [cursor=pointer]':
+              - img [ref=e822]
+          - listitem [ref=e824]:
+            - 'checkbox "Select task: ADO Review" [ref=e825]'
+            - generic [ref=e826]: ADO Review
+            - 'button "Quick done: ADO Review" [ref=e827] [cursor=pointer]':
+              - img [ref=e828]
+          - listitem [ref=e830]:
+            - 'checkbox "Select task: Clean Up Notes from This Week V-Team" [ref=e831]'
+            - generic [ref=e832]: Clean Up Notes from This Week V-Team
+            - 'button "Quick done: Clean Up Notes from This Week V-Team" [ref=e833] [cursor=pointer]':
+              - img [ref=e834]
+          - listitem [ref=e836]:
+            - 'checkbox "Select task: Ensure All Newsletter Requests are Out" [ref=e837]'
+            - generic [ref=e838]: Ensure All Newsletter Requests are Out
+            - 'button "Quick done: Ensure All Newsletter Requests are Out" [ref=e839] [cursor=pointer]':
+              - img [ref=e840]
+          - listitem [ref=e842]:
+            - 'checkbox "Select task: Learn How to Use Copilot CLI" [ref=e843]'
+            - generic [ref=e844]: Learn How to Use Copilot CLI
+            - 'button "Quick done: Learn How to Use Copilot CLI" [ref=e845] [cursor=pointer]':
+              - img [ref=e846]
+          - listitem [ref=e848]:
+            - 'checkbox "Select task: Come Up with Development Strategy for Testing Verdict Agent" [ref=e849]'
+            - generic [ref=e850]: Come Up with Development Strategy for Testing Verdict Agent
+            - 'button "Quick done: Come Up with Development Strategy for Testing Verdict Agent" [ref=e851] [cursor=pointer]':
+              - img [ref=e852]
+          - listitem [ref=e854]:
+            - 'checkbox "Select task: Download Latest Sonar Data to Solve Eden''s Problem" [ref=e855]'
+            - generic [ref=e856]: Download Latest Sonar Data to Solve Eden's Problem
+            - 'button "Quick done: Download Latest Sonar Data to Solve Eden''s Problem" [ref=e857] [cursor=pointer]':
+              - img [ref=e858]
+          - listitem [ref=e860]:
+            - 'checkbox "Select task: Figure Out Work System for Tech Leads and Adopt It" [ref=e861]'
+            - generic [ref=e862]: Figure Out Work System for Tech Leads and Adopt It
+            - 'button "Quick done: Figure Out Work System for Tech Leads and Adopt It" [ref=e863] [cursor=pointer]':
+              - img [ref=e864]
+          - listitem [ref=e866]:
+            - 'checkbox "Select task: Schedule Twice-Weekly Standup After Paula Confirms" [ref=e867]'
+            - generic [ref=e868]: Schedule Twice-Weekly Standup After Paula Confirms
+            - 'button "Quick done: Schedule Twice-Weekly Standup After Paula Confirms" [ref=e869] [cursor=pointer]':
+              - img [ref=e870]
+          - listitem [ref=e872]:
+            - 'checkbox "Select task: Use monitor model numbers to figure out best way to drive them from PC" [ref=e873]'
+            - generic [ref=e874]: Use monitor model numbers to figure out best way to drive them from PC
+            - 'button "Quick done: Use monitor model numbers to figure out best way to drive them from PC" [ref=e875] [cursor=pointer]':
+              - img [ref=e876]
+          - listitem [ref=e878]:
+            - 'checkbox "Select task: Reconnect back door lock as zwave LE" [ref=e879]'
+            - generic [ref=e880]: Reconnect back door lock as zwave LE
+            - 'button "Quick done: Reconnect back door lock as zwave LE" [ref=e881] [cursor=pointer]':
+              - img [ref=e882]
+          - listitem [ref=e884]:
+            - 'checkbox "Select task: Transfer money to atlantic" [ref=e885]'
+            - generic [ref=e886]: Transfer money to atlantic
+            - 'button "Quick done: Transfer money to atlantic" [ref=e887] [cursor=pointer]':
+              - img [ref=e888]
+          - listitem [ref=e890]:
+            - 'checkbox "Select task: Check how long mail forwarding lasts" [ref=e891]'
+            - generic [ref=e892]: Check how long mail forwarding lasts
+            - 'button "Quick done: Check how long mail forwarding lasts" [ref=e893] [cursor=pointer]':
+              - img [ref=e894]
+          - listitem [ref=e896]:
+            - 'checkbox "Select task: Adjust weekly macro spread" [ref=e897]'
+            - generic [ref=e898]: Adjust weekly macro spread
+            - 'button "Quick done: Adjust weekly macro spread" [ref=e899] [cursor=pointer]':
+              - img [ref=e900]
+          - listitem [ref=e902]:
+            - 'checkbox "Select task: Fill out cardiology paperwork/set up account" [ref=e903]'
+            - generic [ref=e904]: Fill out cardiology paperwork/set up account
+            - 'button "Quick done: Fill out cardiology paperwork/set up account" [ref=e905] [cursor=pointer]':
+              - img [ref=e906]
+          - listitem [ref=e908]:
+            - 'checkbox "Select task: Send Sara Dennis draft" [ref=e909]'
+            - generic [ref=e910]: Send Sara Dennis draft
+            - 'button "Quick done: Send Sara Dennis draft" [ref=e911] [cursor=pointer]':
+              - img [ref=e912]
+          - listitem [ref=e914]:
+            - 'checkbox "Select task: Clean up Gmail drafts" [ref=e915]'
+            - generic [ref=e916]: Clean up Gmail drafts
+            - 'button "Quick done: Clean up Gmail drafts" [ref=e917] [cursor=pointer]':
+              - img [ref=e918]
+          - listitem [ref=e920]:
+            - 'checkbox "Select task: Figure Out How to Code on Corp and Push It to Hardened Env for K8s/Azure Foundry Deployment" [ref=e921]'
+            - generic [ref=e922]: Figure Out How to Code on Corp and Push It to Hardened Env for K8s/Azure Foundry Deployment
+            - 'button "Quick done: Figure Out How to Code on Corp and Push It to Hardened Env for K8s/Azure Foundry Deployment" [ref=e923] [cursor=pointer]':
+              - img [ref=e924]
+          - listitem [ref=e926]:
+            - 'checkbox "Select task: MDO DS Ownership Section in Bottom Section of Jael''s Document for Phishing Triage Agent Handover" [ref=e927]'
+            - generic [ref=e928]: MDO DS Ownership Section in Bottom Section of Jael's Document for Phishing Triage Agent Handover
+            - 'button "Quick done: MDO DS Ownership Section in Bottom Section of Jael''s Document for Phishing Triage Agent Handover" [ref=e929] [cursor=pointer]':
+              - img [ref=e930]
+          - listitem [ref=e932]:
+            - 'checkbox "Select task: Home Warranty Letter for Dennis (Urgent)" [ref=e933]'
+            - generic [ref=e934]: Home Warranty Letter for Dennis (Urgent)
+            - 'button "Quick done: Home Warranty Letter for Dennis (Urgent)" [ref=e935] [cursor=pointer]':
+              - img [ref=e936]
+          - listitem [ref=e938]:
+            - 'checkbox "Select task: Review Evgeny and Alan’s document" [ref=e939]'
+            - generic [ref=e940]: Review Evgeny and Alan’s document
+            - 'button "Quick done: Review Evgeny and Alan’s document" [ref=e941] [cursor=pointer]':
+              - img [ref=e942]
+          - listitem [ref=e944]:
+            - 'checkbox "Select task: When do we have to let tenants know of rent increase" [ref=e945]'
+            - generic [ref=e946]: When do we have to let tenants know of rent increase
+            - 'button "Quick done: When do we have to let tenants know of rent increase" [ref=e947] [cursor=pointer]':
+              - img [ref=e948]
+          - listitem [ref=e950]:
+            - 'checkbox "Select task: Get through teams message answers" [ref=e951]'
+            - generic [ref=e952]: Get through teams message answers
+            - 'button "Quick done: Get through teams message answers" [ref=e953] [cursor=pointer]':
+              - img [ref=e954]
+          - listitem [ref=e956]:
+            - 'checkbox "Select task: Start weekly updates for Paula" [ref=e957]'
+            - generic [ref=e958]: Start weekly updates for Paula
+            - 'button "Quick done: Start weekly updates for Paula" [ref=e959] [cursor=pointer]':
+              - img [ref=e960]
+          - listitem [ref=e962]:
+            - 'checkbox "Select task: Complete Brian''s Ask to Add IDC and ILDC People to V-Team" [ref=e963]'
+            - generic [ref=e964]: Complete Brian's Ask to Add IDC and ILDC People to V-Team
+            - 'button "Quick done: Complete Brian''s Ask to Add IDC and ILDC People to V-Team" [ref=e965] [cursor=pointer]':
+              - img [ref=e966]
+          - listitem [ref=e968]:
+            - 'checkbox "Select task: Turn Design Notes from Yafet into Some Guidance for Verdict Agent" [ref=e969]'
+            - generic [ref=e970]: Turn Design Notes from Yafet into Some Guidance for Verdict Agent
+            - 'button "Quick done: Turn Design Notes from Yafet into Some Guidance for Verdict Agent" [ref=e971] [cursor=pointer]':
+              - img [ref=e972]
+          - listitem [ref=e974]:
+            - 'checkbox "Select task: Review Alan''s Efficacy Measurement Plan" [ref=e975]'
+            - generic [ref=e976]: Review Alan's Efficacy Measurement Plan
+            - 'button "Quick done: Review Alan''s Efficacy Measurement Plan" [ref=e977] [cursor=pointer]':
+              - img [ref=e978]
+          - listitem [ref=e980]:
+            - 'checkbox "Select task: Begin Planning Aruba Trip - Figure Out Best Time for Reservations and Start Booking, Figure Out Rental Car or Taxi" [ref=e981]'
+            - generic [ref=e982]: Begin Planning Aruba Trip - Figure Out Best Time for Reservations and Start Booking, Figure Out Rental Car or Taxi
+            - 'button "Quick done: Begin Planning Aruba Trip - Figure Out Best Time for Reservations and Start Booking, Figure Out Rental Car or Taxi" [ref=e983] [cursor=pointer]':
+              - img [ref=e984]
+          - listitem [ref=e986]:
+            - 'checkbox "Select task: Use a local LLM with Clawbot" [ref=e987]'
+            - generic [ref=e988]: Use a local LLM with Clawbot
+            - 'button "Quick done: Use a local LLM with Clawbot" [ref=e989] [cursor=pointer]':
+              - img [ref=e990]
+          - listitem [ref=e992]:
+            - 'checkbox "Select task: Schedule NBC 12 About Town Replacement Date with Candice via Instagram" [ref=e993]'
+            - generic [ref=e994]: Schedule NBC 12 About Town Replacement Date with Candice via Instagram
+            - 'button "Quick done: Schedule NBC 12 About Town Replacement Date with Candice via Instagram" [ref=e995] [cursor=pointer]':
+              - img [ref=e996]
+          - listitem [ref=e998]:
+            - 'checkbox "Select task: Complete Grading Dashboard By Linking Agent Outputs" [ref=e999]'
+            - generic [ref=e1000]: Complete Grading Dashboard By Linking Agent Outputs
+            - 'button "Quick done: Complete Grading Dashboard By Linking Agent Outputs" [ref=e1001] [cursor=pointer]':
+              - img [ref=e1002]
+          - listitem [ref=e1004]:
+            - 'checkbox "Select task: Unfreeze TCGPlayer Pokemon Cards for Sale after updating pricing" [ref=e1005]'
+            - generic [ref=e1006]: Unfreeze TCGPlayer Pokemon Cards for Sale after updating pricing
+            - 'button "Quick done: Unfreeze TCGPlayer Pokemon Cards for Sale after updating pricing" [ref=e1007] [cursor=pointer]':
+              - img [ref=e1008]
+          - listitem [ref=e1010]:
+            - 'checkbox "Select task: Remove all eBay listings" [ref=e1011]'
+            - generic [ref=e1012]: Remove all eBay listings
+            - 'button "Quick done: Remove all eBay listings" [ref=e1013] [cursor=pointer]':
+              - img [ref=e1014]
+          - listitem [ref=e1016]:
+            - 'checkbox "Select task: Sort accumulated items (shoes, clothes, household stuff): trash vs donate vs eBay" [ref=e1017]'
+            - generic [ref=e1018]: "Sort accumulated items (shoes, clothes, household stuff): trash vs donate vs eBay"
+            - 'button "Quick done: Sort accumulated items (shoes, clothes, household stuff): trash vs donate vs eBay" [ref=e1019] [cursor=pointer]':
+              - img [ref=e1020]
+          - listitem [ref=e1022]:
+            - 'checkbox "Select task: Set up Personal website by continuing work started with Claude" [ref=e1023]'
+            - generic [ref=e1024]: Set up Personal website by continuing work started with Claude
+            - 'button "Quick done: Set up Personal website by continuing work started with Claude" [ref=e1025] [cursor=pointer]':
+              - img [ref=e1026]
+          - listitem [ref=e1028]:
+            - 'checkbox "Select task: Fix Clean Eatz Meal Plan Scraper Code on Azure" [ref=e1029]'
+            - generic [ref=e1030]: Fix Clean Eatz Meal Plan Scraper Code on Azure
+            - 'button "Quick done: Fix Clean Eatz Meal Plan Scraper Code on Azure" [ref=e1031] [cursor=pointer]':
+              - img [ref=e1032]
+          - listitem [ref=e1034]:
+            - 'checkbox "Select task: Add Eden to Kusto Cluster Email Threads" [ref=e1035]'
+            - generic [ref=e1036]: Add Eden to Kusto Cluster Email Threads
+            - 'button "Quick done: Add Eden to Kusto Cluster Email Threads" [ref=e1037] [cursor=pointer]':
+              - img [ref=e1038]
+          - listitem [ref=e1040]:
+            - 'checkbox "Select task: Validate new kusto clusters have been added to MDO sonar and update tracker" [ref=e1041]'
+            - generic [ref=e1042]: Validate new kusto clusters have been added to MDO sonar and update tracker
+            - 'button "Quick done: Validate new kusto clusters have been added to MDO sonar and update tracker" [ref=e1043] [cursor=pointer]':
+              - img [ref=e1044]
+          - listitem [ref=e1046]:
+            - 'checkbox "Select task: Schedule weekend to see Connor and Leah (Arlington)" [ref=e1047]'
+            - generic [ref=e1048]: Schedule weekend to see Connor and Leah (Arlington)
+            - 'button "Quick done: Schedule weekend to see Connor and Leah (Arlington)" [ref=e1049] [cursor=pointer]':
+              - img [ref=e1050]
+          - listitem [ref=e1052]:
+            - 'checkbox "Select task: Start up ancestry again" [ref=e1053]'
+            - generic [ref=e1054]: Start up ancestry again
+            - 'button "Quick done: Start up ancestry again" [ref=e1055] [cursor=pointer]':
+              - img [ref=e1056]
+          - listitem [ref=e1058]:
+            - 'checkbox "Select task: Eat Restaurant Guy Lookip" [ref=e1059]'
+            - generic [ref=e1060]: Eat Restaurant Guy Lookip
+            - 'button "Quick done: Eat Restaurant Guy Lookip" [ref=e1061] [cursor=pointer]':
+              - img [ref=e1062]
+          - listitem [ref=e1064]:
+            - 'checkbox "Select task: Get AWB Access on SAW and Figure Out VT Samples" [ref=e1065]'
+            - generic [ref=e1066]: Get AWB Access on SAW and Figure Out VT Samples
+            - 'button "Quick done: Get AWB Access on SAW and Figure Out VT Samples" [ref=e1067] [cursor=pointer]':
+              - img [ref=e1068]
+          - listitem [ref=e1070]:
+            - 'checkbox "Select task: Transfer Fidelity Cash" [ref=e1071]'
+            - generic [ref=e1072]: Transfer Fidelity Cash
+            - 'button "Quick done: Transfer Fidelity Cash" [ref=e1073] [cursor=pointer]':
+              - img [ref=e1074]
+          - listitem [ref=e1076]:
+            - 'checkbox "Select task: Review Verdict Agent Design Doc" [ref=e1077]'
+            - generic [ref=e1078]: Review Verdict Agent Design Doc
+            - 'button "Quick done: Review Verdict Agent Design Doc" [ref=e1079] [cursor=pointer]':
+              - img [ref=e1080]
+          - listitem [ref=e1082]:
+            - 'checkbox "Select task: Find the Agent Overlaps" [ref=e1083]'
+            - generic [ref=e1084]: Find the Agent Overlaps
+            - 'button "Quick done: Find the Agent Overlaps" [ref=e1085] [cursor=pointer]':
+              - img [ref=e1086]
+          - listitem [ref=e1088]:
+            - 'checkbox "Select task: Fix Kusto Join Issue for Eden" [ref=e1089]'
+            - generic [ref=e1090]: Fix Kusto Join Issue for Eden
+            - 'button "Quick done: Fix Kusto Join Issue for Eden" [ref=e1091] [cursor=pointer]':
+              - img [ref=e1092]
+          - listitem [ref=e1094]:
+            - 'checkbox "Select task: Start V2 Verdict Agent Coding" [ref=e1095]'
+            - generic [ref=e1096]: Start V2 Verdict Agent Coding
+            - 'button "Quick done: Start V2 Verdict Agent Coding" [ref=e1097] [cursor=pointer]':
+              - img [ref=e1098]
+          - listitem [ref=e1100]:
+            - 'checkbox "Select task: Master login list update email to cam and larry" [ref=e1101]'
+            - generic [ref=e1102]: Master login list update email to cam and larry
+            - 'button "Quick done: Master login list update email to cam and larry" [ref=e1103] [cursor=pointer]':
+              - img [ref=e1104]
+          - listitem [ref=e1106]:
+            - 'checkbox "Select task: Get Letter Ready for Dennis" [ref=e1107]'
+            - generic [ref=e1108]: Get Letter Ready for Dennis
+            - 'button "Quick done: Get Letter Ready for Dennis" [ref=e1109] [cursor=pointer]':
+              - img [ref=e1110]
+          - listitem [ref=e1112]:
+            - 'checkbox "Select task: Message mihai back" [ref=e1113]'
+            - generic [ref=e1114]: Message mihai back
+            - 'button "Quick done: Message mihai back" [ref=e1115] [cursor=pointer]':
+              - img [ref=e1116]
+          - listitem [ref=e1118]:
+            - 'checkbox "Select task: Get Larry Sales Tax Info" [ref=e1119]'
+            - generic [ref=e1120]: Get Larry Sales Tax Info
+            - 'button "Quick done: Get Larry Sales Tax Info" [ref=e1121] [cursor=pointer]':
+              - img [ref=e1122]
+          - listitem [ref=e1124]:
+            - 'checkbox "Select task: Get Larry Catering Menu Info" [ref=e1125]'
+            - generic [ref=e1126]: Get Larry Catering Menu Info
+            - 'button "Quick done: Get Larry Catering Menu Info" [ref=e1127] [cursor=pointer]':
+              - img [ref=e1128]
+          - listitem [ref=e1130]:
+            - 'checkbox "Select task: Clean Eatz Job Postings (for Larry)" [ref=e1131]'
+            - generic [ref=e1132]: Clean Eatz Job Postings (for Larry)
+            - 'button "Quick done: Clean Eatz Job Postings (for Larry)" [ref=e1133] [cursor=pointer]':
+              - img [ref=e1134]
+          - listitem [ref=e1136]:
+            - 'checkbox "Select task: Send CER to Larry for Midlo Review (by Aaron)" [ref=e1137]'
+            - generic [ref=e1138]: Send CER to Larry for Midlo Review (by Aaron)
+            - 'button "Quick done: Send CER to Larry for Midlo Review (by Aaron)" [ref=e1139] [cursor=pointer]':
+              - img [ref=e1140]
+          - listitem [ref=e1142]:
+            - 'checkbox "Select task: Check out leaking drain at Clean Eatz Midlothian (reported by Larry)" [ref=e1143]'
+            - generic [ref=e1144]: Check out leaking drain at Clean Eatz Midlothian (reported by Larry)
+            - 'button "Quick done: Check out leaking drain at Clean Eatz Midlothian (reported by Larry)" [ref=e1145] [cursor=pointer]':
+              - img [ref=e1146]
+          - listitem [ref=e1148]:
+            - 'checkbox "Select task: Review Jael''s Doc for PTA Handover (CRITICAL)" [ref=e1149]'
+            - generic [ref=e1150]: Review Jael's Doc for PTA Handover (CRITICAL)
+            - 'button "Quick done: Review Jael''s Doc for PTA Handover (CRITICAL)" [ref=e1151] [cursor=pointer]':
+              - img [ref=e1152]
+          - listitem [ref=e1154]:
+            - 'checkbox "Select task: Investigate NMID to Submission ID matching and send update to Eden" [ref=e1155]'
+            - generic [ref=e1156]: Investigate NMID to Submission ID matching and send update to Eden
+            - 'button "Quick done: Investigate NMID to Submission ID matching and send update to Eden" [ref=e1157] [cursor=pointer]':
+              - img [ref=e1158]
+          - listitem [ref=e1160]:
+            - 'checkbox "Select task: Review Docs for Supporting Our Leaders Group" [ref=e1161]'
+            - generic [ref=e1162]: Review Docs for Supporting Our Leaders Group
+            - 'button "Quick done: Review Docs for Supporting Our Leaders Group" [ref=e1163] [cursor=pointer]':
+              - img [ref=e1164]
+          - listitem [ref=e1166]:
+            - 'checkbox "Select task: Subscribe to Ancestry Premium for one month" [ref=e1167]'
+            - generic [ref=e1168]: Subscribe to Ancestry Premium for one month
+            - 'button "Quick done: Subscribe to Ancestry Premium for one month" [ref=e1169] [cursor=pointer]':
+              - img [ref=e1170]
+          - listitem [ref=e1172]:
+            - 'checkbox "Select task: Schedule PT extension online (3-week intervals)" [ref=e1173]'
+            - generic [ref=e1174]: Schedule PT extension online (3-week intervals)
+            - 'button "Quick done: Schedule PT extension online (3-week intervals)" [ref=e1175] [cursor=pointer]':
+              - img [ref=e1176]
+          - listitem [ref=e1178]:
+            - 'checkbox "Select task: Review AMEX purchases (last bill was high)" [ref=e1179]'
+            - generic [ref=e1180]: Review AMEX purchases (last bill was high)
+            - 'button "Quick done: Review AMEX purchases (last bill was high)" [ref=e1181] [cursor=pointer]':
+              - img [ref=e1182]
+          - listitem [ref=e1184]:
+            - 'checkbox "Select task: Create Agent Efficacy plan based on Holly/Costas feedback" [ref=e1185]'
+            - generic [ref=e1186]: Create Agent Efficacy plan based on Holly/Costas feedback
+            - 'button "Quick done: Create Agent Efficacy plan based on Holly/Costas feedback" [ref=e1187] [cursor=pointer]':
+              - img [ref=e1188]
+          - listitem [ref=e1190]:
+            - 'checkbox "Select task: Populate Security Copilot Resources List (Paula request)" [ref=e1191]'
+            - generic [ref=e1192]: Populate Security Copilot Resources List (Paula request)
+            - 'button "Quick done: Populate Security Copilot Resources List (Paula request)" [ref=e1193] [cursor=pointer]':
+              - img [ref=e1194]
+          - listitem [ref=e1196]:
+            - 'checkbox "Select task: Fix WiFi at Clean Eatz Midlothian" [ref=e1197]'
+            - generic [ref=e1198]: Fix WiFi at Clean Eatz Midlothian
+            - 'button "Quick done: Fix WiFi at Clean Eatz Midlothian" [ref=e1199] [cursor=pointer]':
+              - img [ref=e1200]
+          - listitem [ref=e1202]:
+            - 'checkbox "Select task: Check on Larry scheduling grease trap cleanings (Midlothian & Richmond)" [ref=e1203]'
+            - generic [ref=e1204]: Check on Larry scheduling grease trap cleanings (Midlothian & Richmond)
+            - 'button "Quick done: Check on Larry scheduling grease trap cleanings (Midlothian & Richmond)" [ref=e1205] [cursor=pointer]':
+              - img [ref=e1206]
+          - listitem [ref=e1208]:
+            - 'checkbox "Select task: multi-agent chat system" [ref=e1209]'
+            - generic [ref=e1210]: multi-agent chat system
+            - 'button "Quick done: multi-agent chat system" [ref=e1211] [cursor=pointer]':
+              - img [ref=e1212]
+          - listitem [ref=e1214]:
+            - 'checkbox "Select task: Research how Harper Associates started and became dominant Richmond developer" [ref=e1215]'
+            - generic [ref=e1216]: Research how Harper Associates started and became dominant Richmond developer
+            - 'button "Quick done: Research how Harper Associates started and became dominant Richmond developer" [ref=e1217] [cursor=pointer]':
+              - img [ref=e1218]
+          - listitem [ref=e1220]:
+            - 'checkbox "Select task: Verify Microsoft jacket made it home" [ref=e1221]'
+            - generic [ref=e1222]: Verify Microsoft jacket made it home
+            - 'button "Quick done: Verify Microsoft jacket made it home" [ref=e1223] [cursor=pointer]':
+              - img [ref=e1224]
+          - listitem [ref=e1226]:
+            - 'checkbox "Select task: Call State Farm to start glass claim" [ref=e1227]'
+            - generic [ref=e1228]: Call State Farm to start glass claim
+            - 'button "Quick done: Call State Farm to start glass claim" [ref=e1229] [cursor=pointer]':
+              - img [ref=e1230]
+          - listitem [ref=e1232]:
+            - 'checkbox "Select task: Review \"What Do Security Research Architects Do?\" Document and Provide Feedback/Questions Inline and to Dana in Chat" [ref=e1233]'
+            - generic [ref=e1234]: Review "What Do Security Research Architects Do?" Document and Provide Feedback/Questions Inline and to Dana in Chat
+            - 'button "Quick done: Review \"What Do Security Research Architects Do?\" Document and Provide Feedback/Questions Inline and to Dana in Chat" [ref=e1235] [cursor=pointer]':
+              - img [ref=e1236]
+          - listitem [ref=e1238]:
+            - 'checkbox "Select task: File high mileage paperwork for both vehicles (personal property tax discount)" [ref=e1239]'
+            - generic [ref=e1240]: File high mileage paperwork for both vehicles (personal property tax discount)
+            - 'button "Quick done: File high mileage paperwork for both vehicles (personal property tax discount)" [ref=e1241] [cursor=pointer]':
+              - img [ref=e1242]
+          - listitem [ref=e1244]:
+            - 'checkbox "Select task: Check HOA payment history (verify auto-pay is working)" [ref=e1245]'
+            - generic [ref=e1246]: Check HOA payment history (verify auto-pay is working)
+            - 'button "Quick done: Check HOA payment history (verify auto-pay is working)" [ref=e1247] [cursor=pointer]':
+              - img [ref=e1248]
+          - listitem [ref=e1250]:
+            - 'checkbox "Select task: Debug Home Assistant HVAC automation (night temperature drop bug)" [ref=e1251]'
+            - generic [ref=e1252]: Debug Home Assistant HVAC automation (night temperature drop bug)
+            - 'button "Quick done: Debug Home Assistant HVAC automation (night temperature drop bug)" [ref=e1253] [cursor=pointer]':
+              - img [ref=e1254]
+          - listitem [ref=e1256]:
+            - 'checkbox "Select task: Continue Angela Yu Python course (when motivated)" [ref=e1257]'
+            - generic [ref=e1258]: Continue Angela Yu Python course (when motivated)
+            - 'button "Quick done: Continue Angela Yu Python course (when motivated)" [ref=e1259] [cursor=pointer]':
+              - img [ref=e1260]
+          - listitem [ref=e1262]:
+            - 'checkbox "Select task: Check in with Josh Blasdell" [ref=e1263]'
+            - generic [ref=e1264]: Check in with Josh Blasdell
+            - 'button "Quick done: Check in with Josh Blasdell" [ref=e1265] [cursor=pointer]':
+              - img [ref=e1266]
+          - listitem [ref=e1268]:
+            - 'checkbox "Select task: Contact Ben & Ashli to schedule Arlington weekend" [ref=e1269]'
+            - generic [ref=e1270]: Contact Ben & Ashli to schedule Arlington weekend
+            - 'button "Quick done: Contact Ben & Ashli to schedule Arlington weekend" [ref=e1271] [cursor=pointer]':
+              - img [ref=e1272]
+          - listitem [ref=e1274]:
+            - 'checkbox "Select task: Check in with Rich" [ref=e1275]'
+            - generic [ref=e1276]: Check in with Rich
+            - 'button "Quick done: Check in with Rich" [ref=e1277] [cursor=pointer]':
+              - img [ref=e1278]
+          - listitem [ref=e1280]:
+            - 'checkbox "Select task: Check HVAC service records / determine if maintenance is due" [ref=e1281]'
+            - generic [ref=e1282]: Check HVAC service records / determine if maintenance is due
+            - 'button "Quick done: Check HVAC service records / determine if maintenance is due" [ref=e1283] [cursor=pointer]':
+              - img [ref=e1284]
+          - listitem [ref=e1286]:
+            - 'checkbox "Select task: Develop Principal Career Plan" [ref=e1287]'
+            - generic [ref=e1288]: Develop Principal Career Plan
+            - 'button "Quick done: Develop Principal Career Plan" [ref=e1289] [cursor=pointer]':
+              - img [ref=e1290]
+          - listitem [ref=e1292]:
+            - 'checkbox "Select task: Learn Pydantic AI" [ref=e1293]'
+            - generic [ref=e1294]: Learn Pydantic AI
+            - 'button "Quick done: Learn Pydantic AI" [ref=e1295] [cursor=pointer]':
+              - img [ref=e1296]
+          - listitem [ref=e1298]:
+            - 'checkbox "Select task: Re-engage with Shai (Sonar team) re: functions vs. containers" [ref=e1299]'
+            - generic [ref=e1300]: "Re-engage with Shai (Sonar team) re: functions vs. containers"
+            - 'button "Quick done: Re-engage with Shai (Sonar team) re: functions vs. containers" [ref=e1301] [cursor=pointer]':
+              - img [ref=e1302]
+          - listitem [ref=e1304]:
+            - 'checkbox "Select task: Review Shiv''s Document (Guardian secure VM system)" [ref=e1305]'
+            - generic [ref=e1306]: Review Shiv's Document (Guardian secure VM system)
+            - 'button "Quick done: Review Shiv''s Document (Guardian secure VM system)" [ref=e1307] [cursor=pointer]':
+              - img [ref=e1308]
+          - listitem [ref=e1310]:
+            - 'checkbox "Select task: Kusto breakdown for Hackweek decision tree" [ref=e1311]'
+            - generic [ref=e1312]: Kusto breakdown for Hackweek decision tree
+            - 'button "Quick done: Kusto breakdown for Hackweek decision tree" [ref=e1313] [cursor=pointer]':
+              - img [ref=e1314]
+          - listitem [ref=e1316]:
+            - 'checkbox "Select task: Fix Clean Eatz Linktree links and transfer ownership to Chloe" [ref=e1317]'
+            - generic [ref=e1318]: Fix Clean Eatz Linktree links and transfer ownership to Chloe
+            - 'button "Quick done: Fix Clean Eatz Linktree links and transfer ownership to Chloe" [ref=e1319] [cursor=pointer]':
+              - img [ref=e1320]
+        - link "Process All → Clarify" [ref=e1323] [cursor=pointer]:
+          - /url: /clarify
+          - img [ref=e1324]
+          - text: Process All → Clarify
+          - img [ref=e1326]
+    - tablist "Main navigation" [ref=e46]:
+      - generic [ref=e47]:
+        - tab "99+ Inbox" [selected] [ref=e1328] [cursor=pointer]:
+          - generic [ref=e49]:
+            - img [ref=e50]
+            - generic [ref=e1329]: 99+
+          - generic [ref=e53]: Inbox
+        - tab "Clarify" [ref=e55] [cursor=pointer]:
+          - img [ref=e57]
+          - generic [ref=e59]: Clarify
+        - tab "Organize" [ref=e60] [cursor=pointer]:
+          - img [ref=e62]
+          - generic [ref=e64]: Organize
+        - tab "Engage" [ref=e65] [cursor=pointer]:
+          - img [ref=e67]
+          - generic [ref=e69]: Engage
+        - tab "Reflect" [ref=e70] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e75]

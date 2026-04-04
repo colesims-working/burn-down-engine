@@ -1,0 +1,56 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]:
+          - heading "Burn-Down" [level=1] [ref=e9]
+          - paragraph [ref=e10]: Engine
+      - navigation "GTD workflow progress" [ref=e12]:
+        - generic "Inbox (done)" [ref=e14]
+        - generic "Clarify (current)" [ref=e17]
+        - generic "Organize" [ref=e20]
+        - generic "Engage" [ref=e23]
+        - generic "Reflect" [ref=e26]
+      - navigation [ref=e27]:
+        - link "Inbox" [ref=e28] [cursor=pointer]:
+          - /url: /inbox
+          - img [ref=e29]
+          - generic [ref=e32]: Inbox
+        - link "Clarify" [ref=e33] [cursor=pointer]:
+          - /url: /clarify
+          - img [ref=e34]
+          - generic [ref=e36]: Clarify
+        - link "Organize" [ref=e37] [cursor=pointer]:
+          - /url: /organize
+          - img [ref=e38]
+          - generic [ref=e40]: Organize
+        - link "Engage" [ref=e41] [cursor=pointer]:
+          - /url: /engage
+          - img [ref=e42]
+          - generic [ref=e44]: Engage
+        - link "Reflect" [ref=e45] [cursor=pointer]:
+          - /url: /reflect
+          - img [ref=e46]
+          - generic [ref=e48]: Reflect
+      - button "Checking..." [ref=e51] [cursor=pointer]:
+        - generic [ref=e53]: Checking...
+      - generic [ref=e54]:
+        - link "Knowledge" [ref=e55] [cursor=pointer]:
+          - /url: /knowledge
+          - img [ref=e56]
+          - generic [ref=e66]: Knowledge
+        - link "Settings" [ref=e67] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e68]
+          - generic [ref=e71]: Settings
+        - button "Log out" [ref=e72] [cursor=pointer]:
+          - img [ref=e73]
+          - generic [ref=e76]: Log out
+    - main [ref=e77]:
+      - generic [ref=e81]:
+        - heading "Clarify" [level=1] [ref=e82]
+        - paragraph [ref=e83]: Transform messy captures into perfect next actions
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e88]

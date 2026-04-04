@@ -1,0 +1,69 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]:
+          - heading "Burn-Down" [level=1] [ref=e9]
+          - paragraph [ref=e10]: Engine
+      - navigation "GTD workflow progress" [ref=e12]:
+        - generic "Inbox (current)" [ref=e14]
+        - generic "Clarify" [ref=e17]
+        - generic "Organize" [ref=e20]
+        - generic "Engage" [ref=e23]
+        - generic "Reflect" [ref=e26]
+      - navigation [ref=e27]:
+        - link "Inbox 205" [ref=e28] [cursor=pointer]:
+          - /url: /inbox
+          - img [ref=e29]
+          - generic [ref=e32]: Inbox
+          - generic [ref=e33]: "205"
+        - link "Clarify" [ref=e34] [cursor=pointer]:
+          - /url: /clarify
+          - img [ref=e35]
+          - generic [ref=e37]: Clarify
+        - link "Organize" [ref=e38] [cursor=pointer]:
+          - /url: /organize
+          - img [ref=e39]
+          - generic [ref=e41]: Organize
+        - link "Engage" [ref=e42] [cursor=pointer]:
+          - /url: /engage
+          - img [ref=e43]
+          - generic [ref=e45]: Engage
+        - link "Reflect" [ref=e46] [cursor=pointer]:
+          - /url: /reflect
+          - img [ref=e47]
+          - generic [ref=e49]: Reflect
+      - button "Checking..." [ref=e52] [cursor=pointer]:
+        - generic [ref=e54]: Checking...
+      - generic [ref=e55]:
+        - link "Knowledge" [ref=e56] [cursor=pointer]:
+          - /url: /knowledge
+          - img [ref=e57]
+          - generic [ref=e67]: Knowledge
+        - link "Settings" [ref=e68] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e69]
+          - generic [ref=e72]: Settings
+        - button "Log out" [ref=e73] [cursor=pointer]:
+          - img [ref=e74]
+          - generic [ref=e77]: Log out
+    - main [ref=e78]:
+      - generic [ref=e80]:
+        - generic [ref=e81]:
+          - generic [ref=e82]:
+            - heading "Inbox" [level=1] [ref=e83]
+            - paragraph [ref=e84]: Unprocessed captures waiting to be clarified
+          - button "Sync" [ref=e86] [cursor=pointer]:
+            - img [ref=e87]
+            - text: Sync
+        - generic [ref=e92]:
+          - generic [ref=e93]:
+            - textbox "Quick capture..." [active] [ref=e94]
+            - button [disabled] [ref=e95]:
+              - img [ref=e96]
+          - button [ref=e97] [cursor=pointer]:
+            - img [ref=e98]
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e105]

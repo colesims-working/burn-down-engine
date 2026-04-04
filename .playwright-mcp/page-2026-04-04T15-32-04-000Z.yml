@@ -1,0 +1,46 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: Checking.... Never synced" [ref=e11] [cursor=pointer]'
+        - button "More options" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - heading "Inbox" [level=1] [ref=e24]
+            - paragraph [ref=e25]: Unprocessed captures waiting to be clarified
+          - button "Sync" [ref=e27] [cursor=pointer]:
+            - img [ref=e28]
+            - text: Sync
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - textbox "Quick capture..." [active] [ref=e35]
+            - button [disabled] [ref=e36]:
+              - img [ref=e37]
+          - button [ref=e38] [cursor=pointer]:
+            - img [ref=e39]
+    - tablist "Main navigation" [ref=e46]:
+      - generic [ref=e47]:
+        - tab "Inbox" [selected] [ref=e48] [cursor=pointer]:
+          - img [ref=e50]
+          - generic [ref=e53]: Inbox
+        - tab "Clarify" [ref=e55] [cursor=pointer]:
+          - img [ref=e57]
+          - generic [ref=e59]: Clarify
+        - tab "Organize" [ref=e60] [cursor=pointer]:
+          - img [ref=e62]
+          - generic [ref=e64]: Organize
+        - tab "Engage" [ref=e65] [cursor=pointer]:
+          - img [ref=e67]
+          - generic [ref=e69]: Engage
+        - tab "Reflect" [ref=e70] [cursor=pointer]:
+          - img [ref=e72]
+          - generic [ref=e74]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e75]

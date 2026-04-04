@@ -79,7 +79,7 @@ const PRICING: Record<string, ModelPricing> = {
   'gemini-3':       { inputPerMTok: 0.15, outputPerMTok: 0.60 },
 };
 
-function lookupPricing(modelId: string): ModelPricing | undefined {
+export function lookupPricing(modelId: string): ModelPricing | undefined {
   // Find longest matching prefix
   let best: { key: string; pricing: ModelPricing } | undefined;
   for (const [prefix, pricing] of Object.entries(PRICING)) {
@@ -90,7 +90,7 @@ function lookupPricing(modelId: string): ModelPricing | undefined {
   return best?.pricing;
 }
 
-function estimateCost(pricing: ModelPricing | undefined, tokensIn: number, tokensOut: number): number | undefined {
+export function estimateCost(pricing: ModelPricing | undefined, tokensIn: number, tokensOut: number): number | undefined {
   if (!pricing) return undefined;
   return (tokensIn / 1_000_000) * pricing.inputPerMTok + (tokensOut / 1_000_000) * pricing.outputPerMTok;
 }
@@ -121,6 +121,7 @@ export async function listAvailableModels(): Promise<ProviderModels[]> {
     fetchGeminiModels(),
     fetchAnthropicModels(),
     fetchOpenAIModels(),
+    fetchOpenRouterModels(),
   ]);
 
   return [
@@ -133,6 +134,9 @@ export async function listAvailableModels(): Promise<ProviderModels[]> {
     results[2].status === 'fulfilled'
       ? results[2].value
       : { provider: 'openai' as Provider, label: 'OpenAI', available: false, models: [] },
+    results[3].status === 'fulfilled'
+      ? results[3].value
+      : { provider: 'openrouter' as Provider, label: 'OpenRouter', available: false, models: [] },
   ];
 }
 
@@ -249,6 +253,37 @@ async function fetchOpenAIModels(): Promise<ProviderModels> {
   return { provider: 'openai', label: 'OpenAI', available: true, models: chatModels };
 }
 
+async function fetchOpenRouterModels(): Promise<ProviderModels> {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return { provider: 'openrouter', label: 'OpenRouter', available: false, models: [] };
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) return { provider: 'openrouter', label: 'OpenRouter', available: false, models: [] };
+
+    const data = await res.json();
+    const models: AvailableModel[] = (data.data || [])
+      .filter((m: any) => m.id && !m.id.includes('free') && !m.id.includes(':extended'))
+      .slice(0, 50) // Limit to top 50 to keep the UI manageable
+      .map((m: any) => ({
+        id: m.id,
+        name: m.name || m.id,
+        provider: 'openrouter' as Provider,
+        pricing: m.pricing ? {
+          inputPerMTok: parseFloat(m.pricing.prompt) * 1_000_000,
+          outputPerMTok: parseFloat(m.pricing.completion) * 1_000_000,
+        } : undefined,
+        capabilities: { systemMessage: true, jsonMode: true, streaming: true },
+      }));
+
+    return { provider: 'openrouter', label: 'OpenRouter', available: true, models };
+  } catch {
+    return { provider: 'openrouter', label: 'OpenRouter', available: false, models: [] };
+  }
+}
+
 // ─── Test Model ──────────────────────────────────────────────
 
 const TEST_PROMPT = 'You are a task management assistant. Clarify this task into an actionable next step with a clear title.';
@@ -318,6 +353,34 @@ export async function testModel(provider: Provider, model: string): Promise<Test
         const text = response.output_text || '';
         const tokensIn = response.usage?.input_tokens ?? 0;
         const tokensOut = response.usage?.output_tokens ?? 0;
+        return {
+          success: text.length > 0,
+          latencyMs: Date.now() - start,
+          response: text.slice(0, 500),
+          tokensIn,
+          tokensOut,
+          estimatedCost: estimateCost(pricing, tokensIn, tokensOut),
+        };
+      }
+
+      case 'openrouter': {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (!key) return { success: false, latencyMs: 0, error: 'OPENROUTER_API_KEY not set' };
+        const or = new OpenAI({
+          apiKey: key,
+          baseURL: 'https://openrouter.ai/api/v1',
+        });
+        const response = await or.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: TEST_PROMPT },
+            { role: 'user', content: TEST_INPUT },
+          ],
+          max_tokens: 256,
+        });
+        const text = response.choices[0]?.message?.content || '';
+        const tokensIn = response.usage?.prompt_tokens ?? 0;
+        const tokensOut = response.usage?.completion_tokens ?? 0;
         return {
           success: text.length > 0,
           latencyMs: Date.now() - start,

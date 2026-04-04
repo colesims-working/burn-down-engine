@@ -14,7 +14,8 @@ import {
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useEffect, useState } from 'react';
+import { useInboxCount } from '@/components/providers/trust-provider';
+import { HealthIndicator } from '@/components/shared/health-indicator';
 
 interface NavItem {
   href: string;
@@ -39,23 +40,7 @@ const bottomItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [inboxCount, setInboxCount] = useState(0);
-
-  useEffect(() => {
-    async function fetchCount() {
-      try {
-        const res = await fetch('/api/todoist?action=inbox-count');
-        if (res.ok) {
-          const data = await res.json();
-          setInboxCount(data.count || 0);
-        }
-      } catch {}
-    }
-    fetchCount();
-    const onInboxChanged = () => fetchCount();
-    window.addEventListener('inbox-changed', onInboxChanged);
-    return () => window.removeEventListener('inbox-changed', onInboxChanged);
-  }, [pathname]);
+  const { inboxCount } = useInboxCount();
 
   const handleLogout = async () => {
     await fetch('/api/auth', {
@@ -85,18 +70,18 @@ export function Sidebar() {
 
       {/* Workflow arrow indicator */}
       <div className="px-3 pb-2">
-        <div className="flex items-center gap-1 rounded-md bg-secondary/50 px-2.5 py-1.5" role="navigation" aria-label="GTD workflow progress">
+        <div className="flex items-center gap-0.5 rounded-md bg-secondary/50 px-2.5 py-2" role="navigation" aria-label="GTD workflow progress">
           {navItems.map((item, i) => {
-            const isActive = pathname === item.href;
-            const isPast = navItems.findIndex(n => n.href === pathname) > i;
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            const isPast = navItems.findIndex(n => pathname === n.href || pathname.startsWith(n.href + '/')) > i;
             return (
-              <div key={item.href} className="flex items-center">
+              <div key={item.href} className="flex items-center" aria-label={`${item.label}${isActive ? ' (current)' : isPast ? ' (done)' : ''}`}>
                 <div
                   title={`${item.label}${isActive ? ' (current)' : isPast ? ' (done)' : ''}`}
                   className={cn(
-                    'h-1.5 w-1.5 rounded-full transition-colors',
-                    isActive && 'bg-primary',
-                    isPast && 'bg-primary/40',
+                    'h-2.5 w-2.5 rounded-full transition-all',
+                    isActive && 'bg-primary scale-125 ring-2 ring-primary/30',
+                    isPast && 'bg-primary/50',
                     !isActive && !isPast && 'bg-muted-foreground/30',
                   )}
                 />
@@ -104,7 +89,7 @@ export function Sidebar() {
                   <div
                     className={cn(
                       'mx-0.5 h-px w-3',
-                      isPast ? 'bg-primary/30' : 'bg-muted-foreground/20',
+                      isPast ? 'bg-primary/40' : 'bg-muted-foreground/20',
                     )}
                   />
                 )}
@@ -117,7 +102,7 @@ export function Sidebar() {
       {/* Main nav */}
       <nav className="flex-1 space-y-0.5 px-3 py-2">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           const Icon = item.icon;
           const showBadge = item.href === '/inbox' && inboxCount > 0;
 
@@ -144,8 +129,13 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* Health indicator */}
+      <div className="border-t border-border px-3 pt-2">
+        <HealthIndicator />
+      </div>
+
       {/* Bottom nav */}
-      <div className="space-y-0.5 border-t border-border px-3 py-3">
+      <div className="space-y-0.5 px-3 py-2">
         {bottomItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;

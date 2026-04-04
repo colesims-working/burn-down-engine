@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db/client';
-import { eq, ne, and, sql } from 'drizzle-orm';
+import { eq, ne, and, sql, lte, isNull, inArray } from 'drizzle-orm';
 import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist, refreshProjectCounts } from '@/lib/todoist/sync';
 import { todoist } from '@/lib/todoist/client';
 import { buildEngageList, completeTask, bumpTask, blockTask, waitTask, handleFire } from '@/lib/priority/engine';
@@ -11,6 +11,9 @@ import { runProjectAudit, getFilingSuggestions, organizeConversation } from '@/a
 import { getKnowledgeEntries, getPeople, getKnowledgeStats, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry, createPerson, updatePerson, deletePerson } from '@/actions/knowledge';
 import { getAppSettings, updateAppSettings, getModelConfig, getDisabledModels } from '@/lib/db/settings';
 import { listAvailableModels, testModel } from '@/lib/llm/providers';
+import { revertTask } from '@/lib/undo/engine';
+import { logInfo, logError } from '@/lib/logging';
+import type { IntegrityIssue, IntegrityLevel } from '@/components/providers/trust-provider';
 
 // ─── GET: Read operations ────────────────────────────────────
 
@@ -42,12 +45,13 @@ export async function GET(request: NextRequest) {
       }
 
       case 'projects': {
-        // Refresh task counts before returning
-        await refreshProjectCounts();
+        // Return projects immediately, refresh counts in background
         const status = request.nextUrl.searchParams.get('status');
         const projects = status
           ? await db.query.projects.findMany({ where: eq(schema.projects.status, status as any) })
           : await db.query.projects.findMany();
+        // Fire-and-forget: update counts for next request
+        refreshProjectCounts().catch(e => console.error('Background project count refresh failed:', e));
         return NextResponse.json(projects);
       }
 
@@ -99,11 +103,212 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(models);
       }
 
+      case 'task-history': {
+        const limit = parseInt(request.nextUrl.searchParams.get('limit') || '500', 10);
+        const history = await db.query.taskHistory.findMany({
+          orderBy: (h, { desc }) => [desc(h.timestamp)],
+          limit: Math.min(limit, 2000),
+        });
+        return NextResponse.json(history);
+      }
+
+      case 'usage-stats': {
+        // Aggregate LLM usage data for the dashboard
+        const period = request.nextUrl.searchParams.get('period') || '30'; // days
+        const since = new Date(Date.now() - parseInt(period) * 86400000).toISOString();
+
+        const interactions = await db.query.llmInteractions.findMany({
+          where: sql`${schema.llmInteractions.timestamp} >= ${since}`,
+          orderBy: (t, { desc }) => [desc(t.timestamp)],
+        });
+
+        // Aggregate by operation
+        const byOperation: Record<string, { calls: number; tokensIn: number; tokensOut: number; cost: number; avgLatency: number }> = {};
+        let totalCost = 0;
+        let totalCalls = 0;
+        let totalTokensIn = 0;
+        let totalTokensOut = 0;
+
+        for (const i of interactions) {
+          const op = i.purpose || 'unknown';
+          if (!byOperation[op]) byOperation[op] = { calls: 0, tokensIn: 0, tokensOut: 0, cost: 0, avgLatency: 0 };
+          byOperation[op].calls++;
+          byOperation[op].tokensIn += i.tokensIn || 0;
+          byOperation[op].tokensOut += i.tokensOut || 0;
+          byOperation[op].cost += i.costEstimate || 0;
+          byOperation[op].avgLatency += i.latencyMs || 0;
+          totalCost += i.costEstimate || 0;
+          totalCalls++;
+          totalTokensIn += i.tokensIn || 0;
+          totalTokensOut += i.tokensOut || 0;
+        }
+
+        for (const op of Object.keys(byOperation)) {
+          if (byOperation[op].calls > 0) {
+            byOperation[op].avgLatency = Math.round(byOperation[op].avgLatency / byOperation[op].calls);
+          }
+        }
+
+        // Aggregate by day for chart
+        const byDay: Record<string, { calls: number; cost: number }> = {};
+        for (const i of interactions) {
+          const day = i.timestamp?.split('T')[0] || i.timestamp?.split(' ')[0] || 'unknown';
+          if (!byDay[day]) byDay[day] = { calls: 0, cost: 0 };
+          byDay[day].calls++;
+          byDay[day].cost += i.costEstimate || 0;
+        }
+
+        return NextResponse.json({
+          totalCalls, totalCost, totalTokensIn, totalTokensOut,
+          byOperation, byDay,
+          period: parseInt(period),
+        });
+      }
+
+      case 'app-log': {
+        const limitParam = parseInt(request.nextUrl.searchParams.get('limit') || '200', 10);
+        const category = request.nextUrl.searchParams.get('category') || undefined;
+
+        const where = category ? eq(schema.appLog.category, category as any) : undefined;
+        const logs = await db.query.appLog.findMany({
+          where,
+          orderBy: (l, { desc }) => [desc(l.timestamp)],
+          limit: Math.min(limitParam, 500),
+        });
+        return NextResponse.json(logs);
+      }
+
+      case 'integrity-check': {
+        const issues: IntegrityIssue[] = [];
+        const now = new Date();
+
+        // 1. Check for stale inbox tasks (>48h without clarification)
+        const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+        const staleInbox = await db.query.tasks.findMany({
+          where: and(
+            eq(schema.tasks.status, 'inbox'),
+            lte(schema.tasks.createdAt, twoDaysAgo),
+          ),
+        });
+        for (const t of staleInbox) {
+          issues.push({
+            type: 'stale_inbox',
+            taskId: t.id,
+            todoistId: t.todoistId || undefined,
+            title: t.title,
+            detail: `In inbox for ${Math.floor((now.getTime() - new Date(t.createdAt!).getTime()) / 86400000)} days without clarification`,
+            resolution: { label: 'Clarify now', action: 'clarify' },
+          });
+        }
+
+        // 2. Check for stale active tasks (>14 days no engagement)
+        const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const staleActive = await db.query.tasks.findMany({
+          where: and(
+            eq(schema.tasks.status, 'active'),
+            lte(schema.tasks.updatedAt, twoWeeksAgo),
+          ),
+        });
+        for (const t of staleActive) {
+          issues.push({
+            type: 'stale_active',
+            taskId: t.id,
+            todoistId: t.todoistId || undefined,
+            title: t.title,
+            detail: `Active for ${Math.floor((now.getTime() - new Date(t.updatedAt!).getTime()) / 86400000)} days with no engagement`,
+            resolution: { label: 'Review in Engage', action: 'review' },
+          });
+        }
+
+        // 3. Compare local tasks with Todoist (sample: inbox + active tasks with todoistId)
+        try {
+          const localTasksWithTodoist = await db.query.tasks.findMany({
+            where: and(
+              ne(schema.tasks.status, 'killed'),
+              ne(schema.tasks.status, 'completed'),
+            ),
+          });
+          const localTodoistIds = new Set(
+            localTasksWithTodoist.filter(t => t.todoistId).map(t => t.todoistId!)
+          );
+
+          // Fetch all open Todoist tasks
+          const todoistTasks = await todoist.getTasks();
+          const todoistIds = new Set(todoistTasks.map(t => t.id));
+
+          // Tasks in Todoist but not locally
+          for (const tt of todoistTasks) {
+            if (!localTodoistIds.has(tt.id)) {
+              issues.push({
+                type: 'missing_locally',
+                todoistId: tt.id,
+                title: tt.content,
+                detail: 'Task exists in Todoist but not in Burn-Down Engine',
+                resolution: { label: 'Import task', action: 'import' },
+              });
+            }
+          }
+
+          // Tasks marked open locally but completed/missing in Todoist
+          const todoistTaskMap = new Map(todoistTasks.map(t => [t.id, t]));
+          for (const lt of localTasksWithTodoist) {
+            if (lt.todoistId && !todoistIds.has(lt.todoistId)) {
+              issues.push({
+                type: 'missing_in_todoist',
+                taskId: lt.id,
+                todoistId: lt.todoistId,
+                title: lt.title,
+                detail: 'Task is open locally but missing or completed in Todoist',
+                resolution: { label: 'Mark complete', action: 'complete' },
+              });
+            }
+
+            // Sync conflict detection: title changed in both systems
+            if (lt.todoistId && lt.status !== 'inbox') {
+              const tt = todoistTaskMap.get(lt.todoistId);
+              if (tt && tt.content !== lt.title && lt.updatedAt && lt.todoistSyncedAt && lt.updatedAt > lt.todoistSyncedAt) {
+                issues.push({
+                  type: 'sync_conflict',
+                  taskId: lt.id,
+                  todoistId: lt.todoistId,
+                  title: lt.title,
+                  detail: `Title differs — local: "${lt.title}" vs Todoist: "${tt.content}"`,
+                  resolution: { label: 'Resolve', action: 'resolve_conflict' },
+                  conflict: { field: 'title', localValue: lt.title, todoistValue: tt.content },
+                });
+              }
+            }
+          }
+        } catch (e) {
+          // Todoist API failure — report as warning but don't fail the check
+          issues.push({
+            type: 'status_mismatch',
+            title: 'Todoist connection failed',
+            detail: 'Could not compare with Todoist. Check your API key and network.',
+            resolution: { label: 'Retry', action: 'retry' },
+          });
+        }
+
+        // Determine level
+        let level: IntegrityLevel = 'ok';
+        const hasMissing = issues.some(i => i.type === 'missing_locally' || i.type === 'missing_in_todoist');
+        const hasStale = issues.some(i => i.type === 'stale_inbox' || i.type === 'stale_active');
+        if (hasMissing || issues.some(i => i.type === 'status_mismatch')) level = 'error';
+        else if (hasStale) level = 'warning';
+
+        return NextResponse.json({
+          level,
+          issues,
+          checkedAt: now.toISOString(),
+        });
+      }
+
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
   } catch (error) {
     console.error(`GET ${action} error:`, error);
+    logError('system', `GET ${action} failed`, { error: (error as Error).message });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -118,33 +323,62 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action } = body;
 
+  // Validate required fields for task-mutation actions
+  const taskIdRequired = ['complete', 'defer', 'block', 'kill', 'kill-todoist', 'wait', 'delete', 'clarify', 'apply-clarification', 'answer-clarify', 'complete-in-clarify', 'update-task'];
+  if (taskIdRequired.includes(action) && !body.taskId) {
+    return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
+  }
+
   try {
     switch (action) {
+      case 'undo': {
+        const task = await revertTask(
+          body.taskId,
+          body.snapshot,
+          body.undoAction,
+          body.todoistSynced,
+        );
+        return NextResponse.json(task);
+      }
       // ─── Sync ──────────────────────────
       case 'sync-inbox': {
+        logInfo('sync', 'Inbox sync started');
         const tasks = await syncInbox();
+        logInfo('sync', `Inbox sync completed: ${tasks.length} tasks`, { count: tasks.length });
         return NextResponse.json({ synced: tasks.length, tasks });
       }
 
       case 'sync-all': {
+        logInfo('sync', 'Full sync started');
         await syncProjects();
         const tasks = await syncAllTasks();
         await refreshProjectCounts();
+        logInfo('sync', `Full sync completed: ${tasks.length} tasks`, { count: tasks.length });
         return NextResponse.json({ synced: tasks.length });
       }
 
       // ─── Inbox ─────────────────────────
       case 'quick-add': {
+        if (!body.content?.trim()) {
+          return NextResponse.json({ error: 'content required' }, { status: 400 });
+        }
         const todoistTask = await todoist.createTask({ content: body.content });
-        const local = await db.insert(schema.tasks)
-          .values({
-            todoistId: todoistTask.id,
-            originalText: body.content,
-            title: body.content,
-            status: 'inbox',
-            todoistSyncedAt: new Date().toISOString(),
-          })
-          .returning();
+        let local;
+        try {
+          local = await db.insert(schema.tasks)
+            .values({
+              todoistId: todoistTask.id,
+              originalText: body.content,
+              title: body.content,
+              status: 'inbox',
+              todoistSyncedAt: new Date().toISOString(),
+            })
+            .returning();
+        } catch (dbError) {
+          // Clean up Todoist task if DB insert fails
+          try { await todoist.deleteTask(todoistTask.id); } catch {}
+          throw dbError;
+        }
         return NextResponse.json(local[0]);
       }
 
@@ -152,7 +386,9 @@ export async function POST(request: NextRequest) {
       case 'delete': {
         const taskToDelete = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
         if (taskToDelete?.todoistId) {
-          try { await todoist.deleteTask(taskToDelete.todoistId); } catch {}
+          try { await todoist.deleteTask(taskToDelete.todoistId); } catch (e) {
+            console.error('Failed to delete task in Todoist:', e);
+          }
         }
         await db.delete(schema.tasks).where(eq(schema.tasks.id, body.taskId));
         return NextResponse.json({ deleted: true });
@@ -176,12 +412,17 @@ export async function POST(request: NextRequest) {
       // ─── Engage ────────────────────────
       case 'complete': {
         const completed = await completeTask(body.taskId);
-        try { await completeTaskInTodoist(completed); } catch {}
-        return NextResponse.json(completed);
+        let syncWarning: string | undefined;
+        try { await completeTaskInTodoist(completed); } catch (e) {
+          syncWarning = `Failed to complete task in Todoist: ${(e as Error).message}`;
+          console.error(syncWarning);
+        }
+        return NextResponse.json({ ...completed, syncWarning });
       }
 
       case 'defer': {
         const deferred = await bumpTask(body.taskId, body.reason);
+        // bumpTask catches Todoist sync errors internally — surface them as syncWarning
         return NextResponse.json(deferred);
       }
 
@@ -206,10 +447,23 @@ export async function POST(request: NextRequest) {
           action: 'killed',
           details: JSON.stringify({ killedAt: new Date().toISOString() }),
         });
-        if (taskToKill) {
-          try { await killTaskInTodoist(taskToKill); } catch {}
+        if (!body.deferTodoist && taskToKill) {
+          try { await killTaskInTodoist(taskToKill); } catch (e) {
+            console.error('Failed to kill task in Todoist:', e);
+          }
         }
         return NextResponse.json(killed[0]);
+      }
+
+      case 'kill-todoist': {
+        // Deferred Todoist DELETE — called after undo window expires
+        const taskForKill = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        if (taskForKill) {
+          try { await killTaskInTodoist(taskForKill); } catch (e) {
+            console.error('Deferred Todoist kill failed:', e);
+          }
+        }
+        return NextResponse.json({ ok: true });
       }
 
       case 'wait': {
@@ -221,8 +475,12 @@ export async function POST(request: NextRequest) {
         const taskToComplete = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
         if (!taskToComplete) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
         const completedTask = await completeTask(body.taskId);
-        try { await completeTaskInTodoist(completedTask); } catch {}
-        return NextResponse.json(completedTask);
+        let clarifyCompleteWarning: string | undefined;
+        try { await completeTaskInTodoist(completedTask); } catch (e) {
+          clarifyCompleteWarning = `Failed to complete task in Todoist: ${(e as Error).message}`;
+          console.error(clarifyCompleteWarning);
+        }
+        return NextResponse.json({ ...completedTask, syncWarning: clarifyCompleteWarning });
       }
 
       case 'update-task': {
@@ -294,8 +552,16 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Allowlist fields to prevent mass assignment
+        const allowedProjectFields = ['name', 'category', 'goal', 'status', 'notes'];
+        const safeProjectData: Record<string, unknown> = {};
+        for (const key of allowedProjectFields) {
+          if (key in (body.data || {})) safeProjectData[key] = body.data[key];
+        }
+        safeProjectData.updatedAt = new Date().toISOString();
+
         const updated = await db.update(schema.projects)
-          .set({ ...body.data, updatedAt: new Date().toISOString() })
+          .set(safeProjectData)
           .where(eq(schema.projects.id, body.projectId))
           .returning();
         return NextResponse.json(updated[0]);
@@ -391,6 +657,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error(`POST ${action} error:`, error);
+    logError('system', `POST ${action} failed`, { error: (error as Error).message });
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

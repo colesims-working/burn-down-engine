@@ -1,0 +1,61 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - img [ref=e6]
+        - generic [ref=e8]: Burn-Down
+      - generic [ref=e9]:
+        - 'button "System health: Checking.... Never synced" [ref=e11] [cursor=pointer]'
+        - button "More options" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+    - main [ref=e19]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - heading "Knowledge Base" [level=1] [ref=e24]
+            - paragraph [ref=e25]: Everything the system knows — transparent and editable
+          - button "Add Entry" [ref=e27] [cursor=pointer]:
+            - img [ref=e28]
+            - text: Add Entry
+        - generic [ref=e29]:
+          - button "Knowledge (0)" [ref=e30] [cursor=pointer]:
+            - img [ref=e31]
+            - text: Knowledge (0)
+          - button "People (0)" [ref=e41] [cursor=pointer]:
+            - img [ref=e42]
+            - text: People (0)
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - img [ref=e47]
+            - textbox "Search knowledge..." [ref=e50]
+          - combobox [ref=e51]:
+            - option "All Categories" [selected]
+            - option "identity"
+            - option "preference"
+            - option "pattern"
+            - option "priority"
+            - option "schedule"
+            - option "decision"
+            - option "fact"
+            - option "workflow"
+            - option "other"
+    - tablist "Main navigation" [ref=e56]:
+      - generic [ref=e57]:
+        - tab "Inbox" [ref=e58] [cursor=pointer]:
+          - img [ref=e60]
+          - generic [ref=e63]: Inbox
+        - tab "Clarify" [ref=e64] [cursor=pointer]:
+          - img [ref=e66]
+          - generic [ref=e68]: Clarify
+        - tab "Organize" [ref=e69] [cursor=pointer]:
+          - img [ref=e71]
+          - generic [ref=e73]: Organize
+        - tab "Engage" [ref=e74] [cursor=pointer]:
+          - img [ref=e76]
+          - generic [ref=e78]: Engage
+        - tab "Reflect" [ref=e79] [cursor=pointer]:
+          - img [ref=e81]
+          - generic [ref=e83]: Reflect
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e84]

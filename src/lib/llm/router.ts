@@ -1,6 +1,7 @@
 import { geminiGenerate, geminiGenerateJSON, geminiStream } from './gemini';
 import { claudeGenerate, claudeGenerateJSON } from './claude';
 import { openaiGenerate, openaiGenerateJSON } from './openai-chat';
+import { openrouterGenerate, openrouterGenerateJSON } from './openrouter';
 import { getAppSettings, getModelConfig, getModelForOperation } from '@/lib/db/settings';
 import type { ModelAssignment } from '@/lib/db/settings';
 
@@ -45,6 +46,8 @@ export async function llmGenerate(opts: {
       return claudeGenerate({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
     case 'openai':
       return openaiGenerate({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
+    case 'openrouter':
+      return openrouterGenerate({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
     case 'gemini':
     default:
       return geminiGenerate({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
@@ -63,6 +66,8 @@ export async function llmGenerateJSON<T>(opts: {
       return claudeGenerateJSON<T>({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
     case 'openai':
       return openaiGenerateJSON<T>({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
+    case 'openrouter':
+      return openrouterGenerateJSON<T>({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
     case 'gemini':
     default:
       return geminiGenerateJSON<T>({ system: opts.system, prompt: opts.prompt, operation: opts.operation, model: assignment.model });
