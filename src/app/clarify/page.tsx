@@ -321,6 +321,14 @@ export default function ClarifyPage() {
             selected: true,
           }));
           setTasks(loadProgress(initial));
+
+          // Pre-warm knowledge context cache in background — makes first clarify instant
+          const taskIds = filtered.map((t: any) => t.id);
+          fetch('/api/todoist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'warm-context', taskIds: taskIds.slice(0, 20) }),
+          }).catch(() => {});
         }
       } catch {
         toast({ title: 'Failed to load inbox', description: 'Could not fetch tasks for clarification.', duration: 5000 });

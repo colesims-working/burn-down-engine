@@ -10,6 +10,31 @@ import { pushTaskToTodoist, pushSubtasksToTodoist } from '@/lib/todoist/sync';
 import { eq, and } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
+// ─── Context Cache ──────────────────────────────────────────
+// Caches buildContext() results by task text. Re-instruct on the same task
+// reuses the context instead of making another embedding API call.
+// TTL: 5 minutes. Cleared on module reload.
+const contextCache = new Map<string, { context: string; ts: number }>();
+const CONTEXT_CACHE_TTL = 5 * 60 * 1000;
+
+async function getCachedContext(input: string, page: 'inbox' | 'clarify' | 'organize' | 'engage' | 'reflect'): Promise<string> {
+  const key = `${page}:${input}`;
+  const cached = contextCache.get(key);
+  if (cached && Date.now() - cached.ts < CONTEXT_CACHE_TTL) {
+    return cached.context;
+  }
+  const context = await buildContext(input, page);
+  contextCache.set(key, { context, ts: Date.now() });
+  // Prune old entries
+  if (contextCache.size > 50) {
+    const now = Date.now();
+    for (const [k, v] of contextCache) {
+      if (now - v.ts > CONTEXT_CACHE_TTL) contextCache.delete(k);
+    }
+  }
+  return context;
+}
+
 interface ClarifyResult {
   title: string;
   nextAction: string;
@@ -37,7 +62,7 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
   });
   if (!task) throw new Error('Task not found');
 
-  const context = await buildContext(task.originalText, 'clarify');
+  const context = await getCachedContext(task.originalText, 'clarify');
 
   const instructionSuffix = additionalInstructions
     ? `\n\n## Additional User Instructions\n${additionalInstructions}`
@@ -223,7 +248,8 @@ export async function answerClarifyQuestion(taskId: string, answer: string) {
   if (!task) throw new Error('Task not found');
 
   // Re-clarify with the additional context
-  const context = await buildContext(task.originalText + '\n\nUser clarification: ' + answer, 'clarify');
+  // Reuse cached context from the original task text (answer doesn't change the relevant knowledge)
+  const context = await getCachedContext(task.originalText, 'clarify');
 
   const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,

@@ -25,6 +25,7 @@ export async function embedTask(task: schema.Task): Promise<void> {
       .set({
         embedding: Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength),
         embeddingText,
+        dupeDismissedAt: null, // Clear dismiss — new embedding means new potential matches
       })
       .where(eq(schema.tasks.id, task.id));
   } catch (error) {

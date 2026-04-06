@@ -91,6 +91,7 @@ export async function embedUnembeddedTasks(): Promise<number> {
           .set({
             embedding: Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength),
             embeddingText: task.title,
+            dupeDismissedAt: null, // New embedding — re-eligible for detection
           })
           .where(eq(schema.tasks.id, task.id));
         return task.title;
@@ -133,7 +134,7 @@ async function _detectDuplicatesInner(threshold: number): Promise<number> {
       id: schema.tasks.id,
       title: schema.tasks.title,
       embedding: schema.tasks.embedding,
-      dupeDismissedIds: schema.tasks.dupeDismissedIds,
+      dupeDismissedAt: schema.tasks.dupeDismissedAt,
     })
     .from(schema.tasks)
     .where(and(
@@ -141,37 +142,38 @@ async function _detectDuplicatesInner(threshold: number): Promise<number> {
       notInArray(schema.tasks.status, ['completed', 'killed']),
     ));
 
-  // Build dismissed lookup (snapshot — used for scan, but re-checked at write time)
-  const dismissedMap = new Map<string, Set<string>>();
+  // Build candidate list — skip tasks the user has reviewed (dupeDismissedAt set)
+  const reviewedIds = new Set<string>();
   const candidates: CandidateTask[] = [];
   for (const row of rows) {
     if (!row.embedding) continue;
+
+    // If the user has dismissed this task, don't flag it again.
+    // It will be re-eligible after re-embedding (e.g., after clarification).
+    if (row.dupeDismissedAt) {
+      reviewedIds.add(row.id);
+      continue;
+    }
+
     try {
       const buf = Buffer.from(row.embedding as ArrayBuffer);
       const vec = new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
       if (vec.length !== EXPECTED_DIMS) continue;
       candidates.push({ id: row.id, title: row.title, vec });
-      if (row.dupeDismissedIds) {
-        try { dismissedMap.set(row.id, new Set(JSON.parse(row.dupeDismissedIds))); } catch {}
-      }
     } catch {
       continue;
     }
   }
 
-  // Build adjacency: for each task, find best non-dismissed match above threshold
+  // Build adjacency: for each non-reviewed task, find best match above threshold
   const adjacency = new Map<string, { bestId: string; bestScore: number }>();
 
   for (const task of candidates) {
     let bestId: string | null = null;
     let bestScore = 0;
-    const dismissed = dismissedMap.get(task.id);
 
     for (const other of candidates) {
       if (other.id === task.id) continue;
-      if (dismissed?.has(other.id)) continue;
-      if (dismissedMap.get(other.id)?.has(task.id)) continue;
-
       const score = cosineSimilarity(task.vec, other.vec);
       if (score >= threshold && score > bestScore) {
         bestScore = score;
@@ -186,28 +188,20 @@ async function _detectDuplicatesInner(threshold: number): Promise<number> {
 
   let flagged = 0;
 
-  // Write phase: re-read dismissals fresh before each write to catch
-  // user actions that happened during the scan phase above
   for (const task of candidates) {
     const match = adjacency.get(task.id);
 
     if (match) {
-      // Re-read dismissals at write time to avoid overwriting user's "Keep All"
+      // Final write-time check: re-read dupeDismissedAt in case user dismissed during scan
       const fresh = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, task.id) });
-      const freshDismissed: string[] = fresh?.dupeDismissedIds ? JSON.parse(fresh.dupeDismissedIds) : [];
-      if (freshDismissed.includes(match.bestId)) continue; // User dismissed this pair while we were scanning
-
-      // Also check the other side
-      const freshOther = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, match.bestId) });
-      const freshOtherDismissed: string[] = freshOther?.dupeDismissedIds ? JSON.parse(freshOther.dupeDismissedIds) : [];
-      if (freshOtherDismissed.includes(task.id)) continue;
+      if (fresh?.dupeDismissedAt) continue;
 
       await db.update(schema.tasks)
         .set({ duplicateSuspectOf: match.bestId, dupeSimilarity: match.bestScore })
         .where(eq(schema.tasks.id, task.id));
       flagged++;
     } else {
-      // Clear stale flag — but only if the task doesn't already have a fresh dismissal
+      // Clear stale flag
       await db.update(schema.tasks)
         .set({ duplicateSuspectOf: null, dupeSimilarity: null })
         .where(
@@ -361,27 +355,32 @@ export async function mergeTasks(
 // ─── Dismiss ────────────────────────────────────────────────
 
 /**
- * Dismiss a task from duplicate detection. Records the dismissed group
- * so detectDuplicates won't re-flag these tasks against each other.
- * Each task can still match OTHER tasks not in this dismissed group.
+ * Dismiss a task from duplicate detection.
+ *
+ * Sets a "dedup reviewed" timestamp. detectDuplicates will never re-flag a task
+ * whose dupeDismissedAt is more recent than its last embedding change.
+ * This is simpler and more robust than tracking pairwise dismissed IDs —
+ * it means "I've seen the duplicates for this task and they're fine."
+ *
+ * The task can be re-flagged if its EMBEDDING changes (e.g., after clarification),
+ * since a new embedding means new potential matches worth reviewing.
  */
 export async function dismissDuplicate(taskId: string, groupTaskIds?: string[]): Promise<schema.Task> {
-  // Load existing dismissed IDs and merge with the new group
-  const task = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
-  const existingDismissed: string[] = task?.dupeDismissedIds ? JSON.parse(task.dupeDismissedIds) : [];
-  const otherIds = (groupTaskIds || []).filter(id => id !== taskId);
-  const merged = Array.from(new Set([...existingDismissed, ...otherIds]));
+  const now = new Date().toISOString();
 
-  const updated = await db.update(schema.tasks)
-    .set({
-      duplicateSuspectOf: null,
-      dupeSimilarity: null,
-      dupeDismissedIds: merged.length > 0 ? JSON.stringify(merged) : null,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(schema.tasks.id, taskId))
-    .returning();
+  // Dismiss all tasks in the group — each gets a "reviewed" timestamp
+  const allIds = groupTaskIds?.length ? groupTaskIds : [taskId];
+  for (const id of allIds) {
+    await db.update(schema.tasks)
+      .set({
+        duplicateSuspectOf: null,
+        dupeSimilarity: null,
+        dupeDismissedAt: now,
+      })
+      .where(eq(schema.tasks.id, id));
+  }
 
-  if (!updated[0]) throw new Error('Task not found');
-  return updated[0];
+  const updated = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, taskId) });
+  if (!updated) throw new Error('Task not found');
+  return updated;
 }

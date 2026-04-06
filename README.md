@@ -23,12 +23,7 @@ turso db tokens create burn-down-engine  # → TURSO_AUTH_TOKEN
 # 5. Push database schema
 npm run db:push
 
-# 6. Bootstrap your knowledge base (optional but recommended)
-cp seed.example.json seed.json
-# Edit seed.json with YOUR people, role, preferences, etc.
-npm run db:seed
-
-# 7. Run dev server
+# 6. Run dev server
 npm run dev
 ```
 
@@ -73,7 +68,7 @@ See `.env.example` for all required variables. You need API keys for:
 ```bash
 npm run dev          # Start dev server
 npm run db:push      # Push schema changes
-npm run db:seed      # Seed knowledge base from seed.json
+npm run db:push      # Push knowledge DB schema
 npm run db:studio    # Open Drizzle Studio (DB browser)
 npm run build        # Production build
 ```

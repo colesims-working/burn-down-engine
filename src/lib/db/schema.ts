@@ -90,7 +90,8 @@ export const tasks = sqliteTable('tasks', {
   // Duplicate detection
   duplicateSuspectOf: text('duplicate_suspect_of'),
   dupeSimilarity: real('dupe_similarity'),
-  dupeDismissedIds: text('dupe_dismissed_ids'), // JSON array of task IDs dismissed as "not duplicates"
+  dupeDismissedIds: text('dupe_dismissed_ids'), // Legacy — kept for migration compat
+  dupeDismissedAt: text('dupe_dismissed_at'), // Timestamp of last "Keep All" — blocks re-flagging until embedding changes
 
   // Vector embedding
   embedding: blob('embedding'),

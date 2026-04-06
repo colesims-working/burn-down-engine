@@ -18,19 +18,19 @@ Prioritized. Top items get pulled into Active Sprint first.
 
 Quick wins that reduce repo noise and prevent confusion.
 
-- [ ] Delete dead action files: `src/actions/engage.ts`, `src/actions/inbox.ts`, `src/actions/sync.ts`
-- [ ] Delete orphaned streaming endpoint: `src/app/api/clarify-stream/route.ts`
-- [ ] Delete unused UI wrappers: `src/components/ui/tabs.tsx`, `select.tsx`, `dropdown-menu.tsx` (verify knowledge page didn't start using tabs.tsx)
-- [ ] Remove unused exports: `getModel` and `geminiStream` import in `router.ts`, `cosineSimilarity` in `embeddings/generate.ts`
-- [ ] Remove unused Todoist client methods: `getProject`, `deleteProject`, `getLabels`, `createLabel`, `getComments`, `getTodayTasks`
-- [ ] Prune unused Radix packages: `react-alert-dialog`, `react-label`, `react-accordion`, `react-progress`, `react-separator`, `react-slot`, `react-tooltip` (and packages supporting deleted wrappers)
-- [ ] Fix or remove `scripts/seed.ts` (broken import path) and update README references
-- [ ] Fix or remove `npm run lint` (ESLint not configured)
-- [ ] Gitignore: `.playwright-mcp/`, `.claude/settings.local.json`, `e2e/review-report-prev.md`
-- [ ] Move or delete `archived-images/` (66 PNGs, 5.3MB, no references)
-- [ ] Move shared trust/integrity types out of `trust-provider.tsx` into `src/lib/` or `src/types/`
-- [ ] Archive `burn-down-engine-spec.md` → `docs/burn-down-engine-spec-v1-historical.md`
-- [ ] Delete `CLAUDE_NITS.md` if contents have been absorbed elsewhere
+- [x] Delete dead action files: `src/actions/engage.ts`, `src/actions/inbox.ts`, `src/actions/sync.ts`
+- [x] Delete orphaned streaming endpoint: `src/app/api/clarify-stream/route.ts`
+- [x] Delete unused UI wrappers: `select.tsx`, `dropdown-menu.tsx` (kept `tabs.tsx` — used by knowledge page)
+- [x] Remove unused exports: `getModel` and `geminiStream` import in `router.ts` (kept `cosineSimilarity` — used by dedup)
+- [x] Remove unused Todoist client methods: `getProject`, `deleteProject`, `getLabels`, `createLabel`, `getComments`, `getTodayTasks`, `TodoistLabel`
+- [x] Prune unused Radix packages: removed 9 packages, kept `react-dialog`, `react-tabs`, `react-toast`
+- [x] Fix or remove `scripts/seed.ts` — deleted (legacy, knowledge graph replaced it). Updated README.
+- [x] Fix or remove `npm run lint` — removed from package.json (no ESLint config)
+- [x] Gitignore: added `.playwright-mcp/`, `.claude/settings.local.json`, `e2e/review-report-prev.md`
+- [x] Move or delete `archived-images/` — deleted (5.3MB, no references)
+- [x] Move shared trust/integrity types — extracted to `src/lib/types/trust.ts`, re-exported from trust-provider
+- [x] Archive `burn-down-engine-spec.md` → `docs/burn-down-engine-spec-v1-historical.md`
+- [x] Delete `CLAUDE_NITS.md` — already gone
 
 ### Sprint 4 — Engage Correctness and Deadline Awareness
 
@@ -155,7 +155,9 @@ Parse the report into structured items and append new ones to the Bugs or Ideas 
 - [x] **Global context includes all 37 projects.** Limited to top 5 by `lastActivityAt` in both retrieval.ts and legacy context.ts.
 - [x] **Extraction quality varies by model.** Monitoring item — extraction prompt already hardened with concrete JSON examples. String-array issue fixed in Phase 3. Langfuse traces extraction calls for ongoing monitoring.
 - [x] **Quick-Completed Tasks Initially Disappear then Reappear.** `fetchTasks()` replaced entire list from server, ignoring `removedIdsRef`. Now filters out removed IDs on every fetch. Combined with earlier fix (sync no longer overwrites completed status to inbox).
-
+- Explain that [merged] means we merged several tasks. Here's an example of how clarify misunderstood: The user noted this is a '[merged]' item, implying it may have been consolidated from previous feedback or drafts.
+- Undoing a completed task in Inbox (accidental quick complete) didn't populate it back into list
+- Ordering in inbox seems non-deterministic, tasks jump around as different processes complete. We should probably check that we sort based on creation time or something so it doesn't do this.
 ---
 
 ## Ideas (Someday/Maybe)

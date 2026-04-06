@@ -23,23 +23,9 @@ interface UndoEntry {
   deferredFn?: () => Promise<void>;
 }
 
-// ─── Integrity ───────────────────────────────────────────────
-
-export type IntegrityLevel = 'ok' | 'warning' | 'error' | 'unknown';
-
-export interface IntegrityIssue {
-  type: 'missing_locally' | 'missing_in_todoist' | 'status_mismatch' | 'stale_inbox' | 'stale_active' | 'sync_conflict';
-  taskId?: string;
-  todoistId?: string;
-  title: string;
-  detail: string;
-  resolution: { label: string; action: string };
-  conflict?: {
-    field: string;
-    localValue: string;
-    todoistValue: string;
-  };
-}
+// ─── Integrity (canonical types in @/lib/types/trust, re-exported here for compat)
+import type { IntegrityLevel, IntegrityIssue } from '@/lib/types/trust';
+export type { IntegrityLevel, IntegrityIssue };
 
 export interface IntegrityReport {
   level: IntegrityLevel;

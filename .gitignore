@@ -48,4 +48,11 @@ next-env.d.ts
 .vscode/
 .idea/
 
-.vercel
+# playwright MCP
+.playwright-mcp/
+
+# claude code local settings
+.claude/settings.local.json
+
+# review artifacts (prev)
+e2e/review-report-prev.md

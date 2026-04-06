@@ -1,4 +1,4 @@
-import { geminiGenerate, geminiGenerateJSON, geminiStream } from './gemini';
+import { geminiGenerate, geminiGenerateJSON } from './gemini';
 import { claudeGenerate, claudeGenerateJSON } from './claude';
 import { openaiGenerate, openaiGenerateJSON } from './openai-chat';
 import { openrouterGenerate, openrouterGenerateJSON } from './openrouter';
@@ -34,14 +34,6 @@ function withDateContext(system: string): string {
   return `${system}\n\n## Current Date & Time\nToday is ${dateStr}, ${timeStr}. Use this for interpreting relative dates like "tomorrow", "next week", "in 4 days", etc.`;
 }
 
-export function getModel(operation: LLMOperation): 'gemini-flash' | 'claude-opus' {
-  // Legacy sync helper — still used by some callers for quick checks
-  const OPUS_OPERATIONS: LLMOperation[] = [
-    'project_audit', 'weekly_review', 'complex_decomposition',
-    'priority_recalibration', 'organize_conversation',
-  ];
-  return OPUS_OPERATIONS.includes(operation) ? 'claude-opus' : 'gemini-flash';
-}
 
 export async function llmGenerate(opts: {
   operation: LLMOperation;
@@ -71,18 +63,17 @@ export async function llmGenerateJSON<T>(opts: {
   /** Caller-provided context for extraction provenance */
   taskId?: string;
 }): Promise<T> {
-  const assignment = await resolveModel(opts.operation);
-  let system = withDateContext(opts.system);
-
-  // Inline knowledge extraction: append extraction block to qualifying calls
+  // Parallelize: model resolution + extraction block build are independent
   const inputTokenEstimate = Math.ceil(opts.prompt.length / 4);
   const shouldExtract = isExtractionEligible(opts.operation, inputTokenEstimate);
-  if (shouldExtract) {
-    try {
-      const extractionBlock = await buildExtractionPromptBlock();
-      system += extractionBlock;
-    } catch {}
-  }
+
+  const [assignment, extractionBlock] = await Promise.all([
+    resolveModel(opts.operation),
+    shouldExtract ? buildExtractionPromptBlock().catch(() => '') : Promise.resolve(''),
+  ]);
+
+  let system = withDateContext(opts.system);
+  if (extractionBlock) system += extractionBlock;
 
   let result: T;
   const interactionId = crypto.randomUUID();

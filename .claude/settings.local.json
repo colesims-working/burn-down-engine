@@ -21,7 +21,9 @@
       "Bash(npx dotenv:*)",
       "Bash(npx tsx:*)",
       "Bash(npm install:*)",
-      "Bash(ls node_modules/react-force-graph-2d/dist/*.d.ts)"
+      "Bash(ls node_modules/react-force-graph-2d/dist/*.d.ts)",
+      "Bash(npm uninstall:*)",
+      "Bash(ls .eslintrc*:*)"
     ]
   }
 }

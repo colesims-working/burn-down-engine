@@ -43,7 +43,8 @@ export async function syncInbox(): Promise<schema.Task[]> {
 
       if (existing) {
         // Don't overwrite status if the task has been locally completed/killed
-        const preserveStatus = existing.status === 'completed' || existing.status === 'killed';
+        // Never demote a task back to 'inbox' if it has progressed past it
+        const preserveStatus = existing.status !== 'inbox';
         const updated = await db.update(schema.tasks)
           .set({
             title: tt.content,

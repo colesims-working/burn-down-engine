@@ -1,0 +1,1 @@
+ALTER TABLE `tasks` ADD `dupe_dismissed_at` text;

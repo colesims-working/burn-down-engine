@@ -37,14 +37,6 @@ interface TodoistProject {
   view_style: string;
 }
 
-interface TodoistLabel {
-  id: string;
-  name: string;
-  color: string;
-  order: number;
-  is_favorite: boolean;
-}
-
 interface TodoistComment {
   id: string;
   task_id?: string;
@@ -188,10 +180,6 @@ class TodoistClient {
     return this.fetchAllPages<TodoistProject>('/projects?limit=200');
   }
 
-  async getProject(id: string): Promise<TodoistProject> {
-    return this.request<TodoistProject>(`/projects/${id}`);
-  }
-
   async createProject(data: {
     name: string;
     parent_id?: string;
@@ -215,28 +203,7 @@ class TodoistClient {
     });
   }
 
-  async deleteProject(id: string): Promise<void> {
-    await this.request(`/projects/${id}`, { method: 'DELETE' });
-  }
-
-  // ─── Labels ─────────────────────────────────────────────────
-
-  async getLabels(): Promise<TodoistLabel[]> {
-    return this.fetchAllPages<TodoistLabel>('/labels?limit=200');
-  }
-
-  async createLabel(data: { name: string; color?: string }): Promise<TodoistLabel> {
-    return this.request<TodoistLabel>('/labels', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
   // ─── Comments ───────────────────────────────────────────────
-
-  async getComments(taskId: string): Promise<TodoistComment[]> {
-    return this.fetchAllPages<TodoistComment>(`/comments?task_id=${taskId}`);
-  }
 
   async addComment(data: {
     task_id: string;
@@ -268,10 +235,6 @@ class TodoistClient {
     return this.getTasks({ project_id: inbox.id });
   }
 
-  async getTodayTasks(): Promise<TodoistTask[]> {
-    return this.getTasks({ filter: 'today | overdue' });
-  }
-
   async findProjectByName(name: string): Promise<TodoistProject | null> {
     const projects = await this.getProjects();
     return projects.find(p => p.name.toLowerCase() === name.toLowerCase()) || null;
@@ -279,4 +242,4 @@ class TodoistClient {
 }
 
 export const todoist = new TodoistClient();
-export type { TodoistTask, TodoistProject, TodoistLabel, TodoistComment };
+export type { TodoistTask, TodoistProject, TodoistComment };

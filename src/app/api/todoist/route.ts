@@ -6,6 +6,7 @@ import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskI
 import { todoist } from '@/lib/todoist/client';
 import { buildEngageList, completeTask, bumpTask, blockTask, waitTask, handleFire } from '@/lib/priority/engine';
 import { clarifyTask, applyClarification, answerClarifyQuestion } from '@/actions/clarify';
+import { buildContext } from '@/lib/llm/context';
 import { getDailyReviewData, generateDailyObservations, saveDailyReview, generateWeeklyReview } from '@/actions/reflect';
 import { runProjectAudit, getFilingSuggestions, organizeConversation } from '@/actions/organize';
 import { getKnowledgeEntries, getPeople, getKnowledgeStats, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry, createPerson, updatePerson, deletePerson } from '@/actions/knowledge';
@@ -17,7 +18,7 @@ import { buildLegacyEnrichmentInstructions } from '@/lib/llm/prompts/clarify';
 import { writeToExtractionBuffer, flushExtractionBuffer, getBufferCount } from '@/lib/knowledge/extraction';
 import { runConsolidation, revertConsolidationRun, finalizeReferenceOutcomes } from '@/lib/knowledge/consolidation';
 import { logInfo, logError } from '@/lib/logging';
-import type { IntegrityIssue, IntegrityLevel } from '@/components/providers/trust-provider';
+import type { IntegrityIssue, IntegrityLevel } from '@/lib/types/trust';
 
 // ─── GET: Read operations ────────────────────────────────────
 
@@ -596,6 +597,20 @@ export async function POST(request: NextRequest) {
       case 'clarify': {
         const result = await clarifyTask(body.taskId, body.additionalInstructions);
         return NextResponse.json(result);
+      }
+
+      case 'warm-context': {
+        // Pre-warm knowledge context cache for a batch of tasks.
+        // Called when clarify page loads, before user clicks Process.
+        const taskIds: string[] = body.taskIds || [];
+        const warmTasks = taskIds.length > 0
+          ? await db.query.tasks.findMany({ where: inArray(schema.tasks.id, taskIds.slice(0, 20)) })
+          : await db.query.tasks.findMany({ where: eq(schema.tasks.status, 'inbox'), limit: 20 });
+        // Fire all context builds in parallel — they cache themselves
+        await Promise.all(warmTasks.map(t =>
+          buildContext(t.originalText, 'clarify').catch(() => {})
+        ));
+        return NextResponse.json({ warmed: warmTasks.length });
       }
 
       case 'apply-clarification': {
