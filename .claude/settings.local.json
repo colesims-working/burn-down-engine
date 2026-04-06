@@ -15,7 +15,13 @@
       "mcp__playwright__browser_wait_for",
       "mcp__playwright__browser_resize",
       "Bash(npx tsc:*)",
-      "Bash(npx drizzle-kit:*)"
+      "Bash(npx drizzle-kit:*)",
+      "Bash(npx vitest:*)",
+      "Bash(xargs grep:*)",
+      "Bash(npx dotenv:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm install:*)",
+      "Bash(ls node_modules/react-force-graph-2d/dist/*.d.ts)"
     ]
   }
 }

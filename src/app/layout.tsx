@@ -7,6 +7,8 @@ import { MobileTopBar, MobileBottomTabs } from '@/components/nav/mobile-nav';
 import { TrustProvider } from '@/components/providers/trust-provider';
 import { Toaster } from '@/components/shared/toaster';
 import { UndoIndicator } from '@/components/shared/undo-indicator';
+import { PrefetchEngage } from '@/components/shared/prefetch-engage';
+import { LearningIndicator } from '@/components/shared/learning-indicator';
 import { isAuthenticated } from '@/lib/auth/session';
 
 export const metadata: Metadata = {
@@ -44,6 +46,8 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <UndoIndicator />
+            <PrefetchEngage />
+            <LearningIndicator />
           </TrustProvider>
         ) : (
           children

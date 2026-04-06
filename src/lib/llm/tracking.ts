@@ -1,16 +1,7 @@
 import { db, schema } from '@/lib/db/client';
 import { LLMOperation } from './router';
 import { lookupPricing, estimateCost } from './providers';
-import { Langfuse } from 'langfuse';
-
-// Langfuse client — only active when credentials are configured
-const langfuse = process.env.LANGFUSE_SECRET_KEY
-  ? new Langfuse({
-      secretKey: process.env.LANGFUSE_SECRET_KEY,
-      publicKey: process.env.LANGFUSE_PUBLIC_KEY || '',
-      baseUrl: process.env.LANGFUSE_BASE_URL || 'https://us.cloud.langfuse.com',
-    })
-  : null;
+import { langfuse } from '@/lib/langfuse';
 
 export async function trackLLMInteraction(data: {
   operation: LLMOperation;
@@ -71,6 +62,8 @@ export async function trackLLMInteraction(data: {
           latencyMs,
         },
       });
+      // Flush to ensure traces are sent before serverless function terminates
+      await langfuse.flushAsync();
     }
   } catch (error) {
     // Non-blocking error logging

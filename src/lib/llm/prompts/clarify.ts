@@ -62,6 +62,62 @@ Return a JSON object with these fields:
   "knowledgeExtracted": []
 }`;
 
+export function buildLegacyEnrichmentInstructions(task: {
+  projectName: string | null;
+  priority: number;
+  labels: string;
+  dueDate: string | null;
+  description: string | null;
+}): string {
+  const lines: string[] = [
+    '## Context: Existing Todoist Task',
+    'This task was imported from Todoist and already has a home. Enrich it — do NOT reassign it to a different project or create a new one.',
+    '',
+    'Existing Todoist metadata:',
+  ];
+
+  if (task.projectName) {
+    lines.push(`- Project: ${task.projectName} (keep this exactly)`);
+  }
+
+  const priorityLabel = ['', 'P1 (must)', 'P2 (should)', 'P3 (this-week)', 'P4 (backlog)'][task.priority] || `P${task.priority}`;
+  lines.push(`- Priority: ${priorityLabel} (use as a strong signal)`);
+
+  try {
+    const labels = JSON.parse(task.labels || '[]');
+    if (labels.length > 0) {
+      lines.push(`- Labels: ${labels.join(', ')}`);
+    }
+  } catch {}
+
+  if (task.dueDate) {
+    lines.push(`- Due: ${task.dueDate} (preserve unless clearly wrong)`);
+  }
+
+  if (task.description) {
+    lines.push(`- Description: ${task.description}`);
+  }
+
+  lines.push(
+    '',
+    'Rules for this enrichment:',
+  );
+
+  if (task.projectName) {
+    lines.push(`- Set projectName to exactly "${task.projectName}" and newProject to false`);
+  }
+
+  lines.push(
+    '- Preserve existing labels (merge with any new ones, do not replace)',
+    '- Preserve the due date unless it is clearly wrong',
+    '- Set decompositionNeeded to false unless the task genuinely contains multiple unrelated actions',
+    '- Your job is to add: a cleaned-up title, nextAction, timeEstimateMin, energyLevel, contextNotes',
+    '- Set confidence to reflect how sure you are about the enrichment',
+  );
+
+  return lines.join('\n');
+}
+
 export const VOICE_EXTRACTION_PROMPT = `You are a task extraction agent. The user has done a voice "brain dump." Extract every discrete actionable task from the transcript.
 
 Rules:

@@ -26,7 +26,7 @@ export async function openaiGenerate(opts: {
   const endTime = Date.now();
 
   if (opts.operation) {
-    trackLLMInteraction({
+    await trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,
@@ -64,7 +64,7 @@ export async function openaiGenerateJSON<T>(opts: {
   const endTime = Date.now();
 
   if (opts.operation) {
-    trackLLMInteraction({
+    await trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,

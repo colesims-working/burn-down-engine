@@ -43,9 +43,18 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
     ? `\n\n## Additional User Instructions\n${additionalInstructions}`
     : '';
 
+  // Include previous clarification result so re-instructions build on the latest state
+  let previousClarification = '';
+  if (task.llmNotes && additionalInstructions) {
+    try {
+      const prev = JSON.parse(task.llmNotes);
+      previousClarification = `\n\n## Previous Clarification Result\nIMPORTANT: Start from this result. Only change the specific fields the user asked to change. Keep ALL other fields exactly as they are — do not rewrite title, nextAction, priority, labels, timeEstimate, energyLevel, contextNotes, or any other field unless the user's instruction specifically targets it.\n\n${JSON.stringify(prev, null, 2)}`;
+    } catch {}
+  }
+
   const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
-    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${instructionSuffix}`,
+    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${previousClarification}${instructionSuffix}`,
     operation: 'clarify_task',
   });
 

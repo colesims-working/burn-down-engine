@@ -1,7 +1,12 @@
 import { db, schema } from '@/lib/db/client';
-import { geminiEmbed } from '@/lib/llm/gemini';
+import { generateEmbedding } from '@/lib/knowledge/embedding';
 import { eq } from 'drizzle-orm';
 
+/**
+ * Embed a task using Qwen3-Embedding-8B (4096 dims).
+ * Uses title + nextAction + contextNotes for richer semantic content.
+ * Called after clarification to re-embed with the enriched text.
+ */
 export async function embedTask(task: schema.Task): Promise<void> {
   const parts = [
     task.title,
@@ -14,10 +19,11 @@ export async function embedTask(task: schema.Task): Promise<void> {
   const embeddingText = parts.join(' | ');
 
   try {
-    const embedding = await geminiEmbed(embeddingText);
+    const embeddingArr = await generateEmbedding(embeddingText, { sourceContext: 'clarify' });
+    const vec = new Float32Array(embeddingArr);
     await db.update(schema.tasks)
       .set({
-        embedding: Buffer.from(embedding.buffer),
+        embedding: Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength),
         embeddingText,
       })
       .where(eq(schema.tasks.id, task.id));
@@ -26,14 +32,16 @@ export async function embedTask(task: schema.Task): Promise<void> {
   }
 }
 
+/** @deprecated Use knowledge graph embedding system instead */
 export async function embedKnowledgeEntry(entry: schema.KnowledgeEntry): Promise<void> {
   const embeddingText = `${entry.category}: ${entry.key} — ${entry.value}`;
 
   try {
-    const embedding = await geminiEmbed(embeddingText);
+    const embeddingArr = await generateEmbedding(embeddingText, { sourceContext: 'knowledge' });
+    const vec = new Float32Array(embeddingArr);
     await db.update(schema.knowledgeEntries)
       .set({
-        embedding: Buffer.from(embedding.buffer),
+        embedding: Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength),
         embeddingText,
       })
       .where(eq(schema.knowledgeEntries.id, entry.id));
@@ -50,5 +58,7 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  if (denom === 0) return 0;
+  return dot / denom;
 }

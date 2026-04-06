@@ -87,6 +87,11 @@ export const tasks = sqliteTable('tasks', {
   clarifyQuestions: text('clarify_questions'),
   llmNotes: text('llm_notes'),
 
+  // Duplicate detection
+  duplicateSuspectOf: text('duplicate_suspect_of'),
+  dupeSimilarity: real('dupe_similarity'),
+  dupeDismissedIds: text('dupe_dismissed_ids'), // JSON array of task IDs dismissed as "not duplicates"
+
   // Vector embedding
   embedding: blob('embedding'),
   embeddingText: text('embedding_text'),
@@ -276,6 +281,7 @@ export const appSettings = sqliteTable('app_settings', {
   // JSON array of "provider:modelId" strings that the admin has disabled
   disabledModels: text('disabled_models'),
   autoApproveThreshold: real('auto_approve_threshold').default(0.8),
+  dupeSimilarityThreshold: real('dupe_similarity_threshold').default(0.92),
   monthlyBudget: real('monthly_budget'), // USD budget limit, null = no limit
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 });

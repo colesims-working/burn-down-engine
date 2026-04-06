@@ -1,5 +1,6 @@
 import { db, schema } from '@/lib/db/client';
 import { eq, like, desc, sql, and, or, ne, inArray } from 'drizzle-orm';
+import { buildKnowledgeContext } from '@/lib/knowledge/retrieval';
 
 type PageType = 'inbox' | 'clarify' | 'organize' | 'engage' | 'reflect';
 
@@ -53,7 +54,12 @@ export async function getActiveProjectSummary(): Promise<string> {
 
   if (projects.length === 0) return '## Active Projects\nNone yet.';
 
-  const lines = projects.map(p => {
+  // Top 5 by recent activity to stay within token budget
+  const sorted = [...projects]
+    .sort((a, b) => (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? ''))
+    .slice(0, 5);
+
+  const lines = sorted.map(p => {
     const parts = [`**${p.name}**`];
     if (p.category) parts.push(`[${p.category}]`);
     if (p.goal) parts.push(`— ${p.goal}`);
@@ -212,15 +218,33 @@ export async function matchProjects(text: string): Promise<string[]> {
 
 // ─── Main Context Builder ────────────────────────────────────
 
+/**
+ * Build context for an LLM prompt.
+ *
+ * Uses the new knowledge graph retrieval pipeline (4-stage GraphRAG).
+ * Falls back to legacy category-based retrieval if the knowledge DB is unavailable.
+ */
 export async function buildContext(input: string, page: PageType): Promise<string> {
+  // Try new knowledge graph pipeline first
+  try {
+    const context = await buildKnowledgeContext(input, page);
+    if (context.length > 0) return context;
+  } catch (error) {
+    console.error('Knowledge graph retrieval failed, falling back to legacy:', error);
+  }
+
+  // Legacy fallback
+  return buildLegacyContext(input, page);
+}
+
+/** Legacy context builder — kept as fallback */
+async function buildLegacyContext(input: string, page: PageType): Promise<string> {
   const sections: string[] = [];
 
-  // Always include core context
   sections.push(await getIdentityContext());
   sections.push(await getCurrentPriorities());
   sections.push(await getActiveProjectSummary());
 
-  // Match mentioned entities
   const mentionedPeople = await matchPeople(input);
   if (mentionedPeople.length > 0) {
     sections.push(await getPeopleContext(mentionedPeople));
@@ -231,22 +255,18 @@ export async function buildContext(input: string, page: PageType): Promise<strin
     sections.push(await getProjectContext(mentionedProjects));
   }
 
-  // Page-specific context
   switch (page) {
     case 'clarify':
       sections.push(await getTaskPatterns());
       sections.push(await getDecompositionTemplates());
       sections.push(await getPreferences());
       break;
-
     case 'organize':
       sections.push(await getPreferences());
       break;
-
     case 'engage':
       sections.push(await getDeferralPatterns());
       break;
-
     case 'reflect':
       sections.push(await getDeferralPatterns());
       sections.push(await getTaskPatterns());

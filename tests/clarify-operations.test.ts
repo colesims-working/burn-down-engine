@@ -372,3 +372,126 @@ describe('voice transcript for re-instruct', () => {
     expect(transcript).toBe('');
   });
 });
+
+describe('Bug 5: Processing tasks visibility', () => {
+  interface VisTask {
+    id: string;
+    status: string;
+    streamText?: string;
+    splitFromId?: string;
+    splitInto?: number;
+  }
+
+  // Mirrors the pendingTasks + processingTasks logic
+  function getPendingTasks(tasks: VisTask[]): VisTask[] {
+    const awaitingSplitParentIds = new Set(tasks.filter(t => t.status === 'done' && t.splitInto).map(t => t.id));
+    return tasks.filter(t => (t.status === 'pending' || t.status === 'error') && !awaitingSplitParentIds.has(t.splitFromId || ''));
+  }
+
+  function getProcessingTasks(tasks: VisTask[]): VisTask[] {
+    return tasks.filter(t => t.status === 'processing' && !t.streamText);
+  }
+
+  function shouldShowPendingSection(tasks: VisTask[]): boolean {
+    return getPendingTasks(tasks).length > 0 || getProcessingTasks(tasks).length > 0;
+  }
+
+  it('shows pending section when a task is re-clarifying (processing)', () => {
+    const tasks: VisTask[] = [
+      { id: 'a', status: 'processing', streamText: '' },  // re-clarifying
+      { id: 'b', status: 'approved' },
+    ];
+    expect(shouldShowPendingSection(tasks)).toBe(true);
+    expect(getProcessingTasks(tasks)).toHaveLength(1);
+  });
+
+  it('hides section when no pending or processing tasks', () => {
+    const tasks: VisTask[] = [
+      { id: 'a', status: 'done' },
+      { id: 'b', status: 'approved' },
+    ];
+    expect(shouldShowPendingSection(tasks)).toBe(false);
+  });
+
+  it('does not count streaming tasks as non-stream processing', () => {
+    const tasks: VisTask[] = [
+      { id: 'a', status: 'processing', streamText: 'partial response...' },
+    ];
+    expect(getProcessingTasks(tasks)).toHaveLength(0);
+  });
+});
+
+describe('Bug 1: noSplit flag and reject cleanup', () => {
+  interface SplitTask {
+    id: string;
+    status: string;
+    noSplit?: boolean;
+    splitFromId?: string;
+    splitInto?: number;
+    result: any;
+  }
+
+  // Mirrors the logic in reclarifyWithInstructions: should autoSplit run?
+  function shouldAutoSplit(task: SplitTask, result: { decompositionNeeded: boolean; subtasks: { title: string }[] }): boolean {
+    if (task.noSplit) return false;
+    if (!result.decompositionNeeded || result.subtasks.length === 0) return false;
+    return true;
+  }
+
+  it('blocks auto-split when noSplit is true', () => {
+    const task: SplitTask = { id: 'a', status: 'done', noSplit: true, result: {} };
+    const result = { decompositionNeeded: true, subtasks: [{ title: 'Sub 1' }, { title: 'Sub 2' }] };
+    expect(shouldAutoSplit(task, result)).toBe(false);
+  });
+
+  it('allows auto-split when noSplit is false/undefined', () => {
+    const task: SplitTask = { id: 'a', status: 'done', result: {} };
+    const result = { decompositionNeeded: true, subtasks: [{ title: 'Sub 1' }] };
+    expect(shouldAutoSplit(task, result)).toBe(true);
+  });
+
+  it('does not split when decomposition is not needed', () => {
+    const task: SplitTask = { id: 'a', status: 'done', result: {} };
+    const result = { decompositionNeeded: false, subtasks: [] };
+    expect(shouldAutoSplit(task, result)).toBe(false);
+  });
+
+  // Mirrors rejectTask: should clean up split children
+  function rejectWithCleanup(tasks: SplitTask[], taskId: string): { updated: SplitTask[]; childrenToDelete: string[] } {
+    const children = tasks.filter(t => t.splitFromId === taskId);
+    const childrenToDelete = children.map(c => c.id);
+    const updated = tasks
+      .filter(t => t.splitFromId !== taskId)
+      .map(t => t.id === taskId
+        ? { ...t, status: 'rejected', result: null, splitInto: undefined }
+        : t
+      );
+    return { updated, childrenToDelete };
+  }
+
+  it('rejectTask removes split children from task list', () => {
+    const tasks: SplitTask[] = [
+      { id: 'parent', status: 'done', splitInto: 2, result: {} },
+      { id: 'child1', status: 'pending', splitFromId: 'parent', result: null },
+      { id: 'child2', status: 'pending', splitFromId: 'parent', result: null },
+      { id: 'other', status: 'done', result: {} },
+    ];
+    const { updated, childrenToDelete } = rejectWithCleanup(tasks, 'parent');
+    expect(updated).toHaveLength(2);
+    expect(updated.find(t => t.id === 'parent')?.status).toBe('rejected');
+    expect(updated.find(t => t.id === 'parent')?.splitInto).toBeUndefined();
+    expect(updated.find(t => t.id === 'other')?.status).toBe('done');
+    expect(childrenToDelete).toEqual(['child1', 'child2']);
+  });
+
+  it('rejectTask with no children works normally', () => {
+    const tasks: SplitTask[] = [
+      { id: 'a', status: 'done', result: {} },
+      { id: 'b', status: 'done', result: {} },
+    ];
+    const { updated, childrenToDelete } = rejectWithCleanup(tasks, 'a');
+    expect(updated).toHaveLength(2);
+    expect(updated.find(t => t.id === 'a')?.status).toBe('rejected');
+    expect(childrenToDelete).toEqual([]);
+  });
+});

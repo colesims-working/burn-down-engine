@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, AlertTriangle, Keyboard, Check, ArrowUpDown } from 'lucide-react';
+import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, AlertTriangle, Keyboard, Check, ArrowUpDown, GitMerge, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
@@ -14,12 +14,112 @@ interface InboxTask {
   title: string;
   originalText: string;
   createdAt: string;
+  duplicateSuspectOf: string | null;
+  dupeSimilarity: number | null;
+}
+
+function DuplicateGroupCard({ group, groupKey, onMerge, onDismiss }: {
+  group: InboxTask[];
+  groupKey: string;
+  onMerge: (suspectId: string, originalId: string, mergedTitle?: string) => void;
+  onDismiss: (groupTaskIds: string[]) => void;
+}) {
+  const [suggestedTitle, setSuggestedTitle] = useState<string | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [fetchedForKey, setFetchedForKey] = useState<string | null>(null);
+  const firstSuspect = group.find(t => t.duplicateSuspectOf);
+
+  // Fetch preview once per unique group (keyed by sorted task IDs)
+  useEffect(() => {
+    if (fetchedForKey === groupKey) return;
+    let cancelled = false;
+
+    async function fetchPreview() {
+      setLoadingPreview(true);
+      setSuggestedTitle(null);
+      try {
+        const res = await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'preview-merge', titles: group.map(t => t.title) }),
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setSuggestedTitle(data.suggestedTitle);
+          setEditingTitle(data.suggestedTitle);
+          setFetchedForKey(groupKey);
+        }
+      } catch {} finally { if (!cancelled) setLoadingPreview(false); }
+    }
+
+    fetchPreview();
+    return () => { cancelled = true; };
+  }, [groupKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="rounded-lg border border-amber-500/20 bg-card p-3 space-y-2">
+      <div className="space-y-1.5">
+        {group.map((task, ti) => (
+          <div key={task.id} className="flex items-start gap-2 text-sm">
+            <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-400 font-medium mt-0.5">{ti + 1}</span>
+            <span className="break-words text-muted-foreground line-through decoration-amber-500/30">{task.title}</span>
+          </div>
+        ))}
+      </div>
+
+      {firstSuspect?.dupeSimilarity && (
+        <div className="text-[10px] text-amber-400/70">{Math.round(firstSuspect.dupeSimilarity * 100)}% similar</div>
+      )}
+
+      {/* Merge preview */}
+      <div className="rounded-lg bg-secondary/50 px-3 py-2">
+        <div className="text-[10px] font-medium text-muted-foreground mb-1">Merge into:</div>
+        {loadingPreview ? (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <RefreshCw className="h-3 w-3 animate-spin" /> Generating suggestion...
+          </div>
+        ) : (
+          <input
+            type="text"
+            value={editingTitle}
+            onChange={e => setEditingTitle(e.target.value)}
+            className="w-full rounded border border-border bg-card px-2 py-1 text-sm focus:border-primary focus:outline-none"
+          />
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        {firstSuspect && (
+          <button
+            onClick={() => onMerge(firstSuspect.id, firstSuspect.duplicateSuspectOf!, editingTitle || undefined)}
+            disabled={loadingPreview}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/30 disabled:opacity-50"
+          >
+            <GitMerge className="h-3 w-3" />
+            Merge
+          </button>
+        )}
+        {firstSuspect && (
+          <button
+            onClick={() => onDismiss(group.map(t => t.id))}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
+          >
+            <X className="h-3 w-3" />
+            Keep All
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function InboxPage() {
   const [tasks, setTasks] = useState<InboxTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [deduping, setDeduping] = useState(false);
+  const dismissPromiseRef = useRef<Promise<void> | null>(null);
   const [quickAddText, setQuickAddText] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [recording, setRecording] = useState(false);
@@ -32,8 +132,10 @@ export default function InboxPage() {
     try {
       const res = await fetch('/api/todoist?action=inbox');
       if (res.ok) {
-        const data = await res.json();
-        setTasks(data);
+        const data: InboxTask[] = await res.json();
+        // Filter out tasks the user has already completed/deleted in this session
+        const filtered = data.filter(t => !removedIdsRef.current.has(t.id));
+        setTasks(filtered);
       }
     } catch (error) {
       console.error('Failed to fetch inbox:', error);
@@ -48,11 +150,12 @@ export default function InboxPage() {
   // Auto-sync if stale (>5 min since last inbox sync)
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     async function loadAndSync() {
       // Fetch local tasks and sync state in parallel
       const [tasksRes, stateRes] = await Promise.all([
-        fetch('/api/todoist?action=inbox').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/todoist?action=sync-state').then(r => r.ok ? r.json() : null).catch(() => null),
+        fetch('/api/todoist?action=inbox', { signal: controller.signal }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/todoist?action=sync-state', { signal: controller.signal }).then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
 
       if (cancelled) return;
@@ -68,6 +171,7 @@ export default function InboxPage() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'sync-inbox' }),
+            signal: controller.signal,
           });
           if (syncRes.ok && !cancelled) {
             const data = await syncRes.json();
@@ -87,10 +191,15 @@ export default function InboxPage() {
         } catch {} finally {
           if (!cancelled) setSyncing(false);
         }
+
+        // Run dedup after sync — waits for any pending dismiss first
+        if (!cancelled) {
+          await runDedup(controller.signal);
+        }
       }
     }
     loadAndSync();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [fetchTasks]);
 
   // Re-fetch when tasks change elsewhere (e.g. undo)
@@ -109,14 +218,15 @@ export default function InboxPage() {
         body: JSON.stringify({ action: 'sync-inbox' }),
       });
       if (res.ok) {
-        // Clear removed IDs on manual sync — user is explicitly refreshing
-        removedIdsRef.current.clear();
         await fetchTasks();
       }
     } finally {
       setSyncing(false);
       window.dispatchEvent(new Event('inbox-changed'));
     }
+
+    // Run dedup after sync — waits for any pending dismiss first
+    await runDedup();
   };
 
   const handleQuickAdd = async (e: React.FormEvent) => {
@@ -132,6 +242,8 @@ export default function InboxPage() {
       title: text,
       originalText: text,
       createdAt: new Date().toISOString(),
+      duplicateSuspectOf: null,
+      dupeSimilarity: null,
     }, ...prev]);
 
     try {
@@ -164,10 +276,10 @@ export default function InboxPage() {
   };
 
   const selectAll = () => {
-    if (selected.size === tasks.length) {
+    if (selected.size === normalTasks.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(tasks.map(t => t.id)));
+      setSelected(new Set(normalTasks.map(t => t.id)));
     }
   };
 
@@ -278,11 +390,124 @@ export default function InboxPage() {
     }
   };
 
+  // Duplicate management
+  const handleMergeDuplicate = async (suspectId: string, originalId: string, mergedTitle?: string) => {
+    // Optimistically remove both
+    setTasks(prev => prev.filter(t => t.id !== suspectId && t.id !== originalId));
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'merge-duplicates', primaryTaskId: originalId, duplicateTaskId: suspectId, mergedTitle }),
+      });
+      if (res.ok) {
+        const merged = await res.json();
+        // Immediately add merged task to local state so it's visible right away
+        setTasks(prev => [{
+          id: merged.id,
+          title: merged.title,
+          originalText: merged.originalText || merged.title,
+          createdAt: merged.createdAt || new Date().toISOString(),
+          duplicateSuspectOf: null,
+          dupeSimilarity: null,
+        }, ...prev]);
+        toast({ title: 'Tasks merged', description: merged.title, duration: 3000 });
+        // Re-run dedup so the merged task is checked against remaining similar tasks
+        await runDedup();
+      } else {
+        await fetchTasks();
+      }
+    } catch {
+      await fetchTasks();
+    }
+    window.dispatchEvent(new Event('inbox-changed'));
+  };
+
+  // Centralized dedup runner — waits for any pending dismiss to complete first
+  const runDedup = async (signal?: AbortSignal) => {
+    // Wait for any in-flight dismiss to finish before scanning
+    if (dismissPromiseRef.current) {
+      await dismissPromiseRef.current;
+    }
+    setDeduping(true);
+    try {
+      await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run-dedup' }),
+        signal,
+      });
+      await fetchTasks();
+    } catch {} finally {
+      setDeduping(false);
+    }
+  };
+
+  const handleDismissDuplicate = async (groupTaskIds: string[]) => {
+    // Optimistically clear flags on all tasks in the group
+    const idSet = new Set(groupTaskIds);
+    setTasks(prev => prev.map(t =>
+      idSet.has(t.id) ? { ...t, duplicateSuspectOf: null, dupeSimilarity: null } : t
+    ));
+    // Dismiss each on the server with the full group context
+    // Track the promise so runDedup() waits for it to finish
+    const dismissWork = Promise.all(groupTaskIds.map(taskId =>
+      fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'dismiss-duplicate', taskId, groupTaskIds }),
+      })
+    )).then(() => {}).catch(() => {});
+    dismissPromiseRef.current = dismissWork;
+    await dismissWork;
+    dismissPromiseRef.current = null;
+  };
+
+  // Derived: group duplicates into clusters (handles 2+ similar tasks)
+  const duplicateGroups = (() => {
+    const suspects = tasks.filter(t => t.duplicateSuspectOf);
+    if (suspects.length === 0) return [];
+
+    // Build clusters: group by shared original (union-find style)
+    const parent = new Map<string, string>(); // task id → cluster root
+    function find(id: string): string {
+      while (parent.get(id) !== id) { parent.set(id, parent.get(parent.get(id)!)!); id = parent.get(id)!; }
+      return id;
+    }
+    function union(a: string, b: string) {
+      const ra = find(a), rb = find(b);
+      if (ra !== rb) parent.set(rb, ra);
+    }
+
+    // Initialize all involved IDs
+    for (const s of suspects) {
+      if (!parent.has(s.id)) parent.set(s.id, s.id);
+      if (!parent.has(s.duplicateSuspectOf!)) parent.set(s.duplicateSuspectOf!, s.duplicateSuspectOf!);
+      union(s.id, s.duplicateSuspectOf!);
+    }
+
+    // Group ALL tasks in the union-find into clusters (not just suspects)
+    const clusters = new Map<string, InboxTask[]>();
+    const seen = new Set<string>();
+    for (const [id] of parent) {
+      const root = find(id);
+      if (!clusters.has(root)) clusters.set(root, []);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const task = tasks.find(t => t.id === id);
+      if (task) clusters.get(root)!.push(task);
+    }
+
+    return Array.from(clusters.values()).filter(c => c.length >= 2);
+  })();
+  const duplicateTaskIds = new Set(duplicateGroups.flatMap(g => g.map(t => t.id)));
+  const normalTasks = tasks.filter(t => !duplicateTaskIds.has(t.id));
+
   // Keyboard navigation
   const [focusIdx, setFocusIdx] = useState(0);
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
 
-  const sortedTasks = [...tasks].sort((a, b) => {
+  const sortedTasks = [...normalTasks].sort((a, b) => {
     const da = new Date(a.createdAt).getTime();
     const db = new Date(b.createdAt).getTime();
     return sortNewestFirst ? db - da : da - db;
@@ -334,14 +559,22 @@ export default function InboxPage() {
         title="Inbox"
         description="Unprocessed captures waiting to be clarified"
         action={
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
-          >
-            <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
-            Sync
-          </button>
+          <div className="flex items-center gap-2">
+            {deduping && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Finding duplicates...
+              </span>
+            )}
+            <button
+              onClick={handleSync}
+              disabled={syncing || deduping}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+            >
+              <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
+              {syncing ? 'Syncing...' : 'Sync'}
+            </button>
+          </div>
         }
       />
 
@@ -440,6 +673,30 @@ export default function InboxPage() {
         </div>
       )}
 
+      {/* Duplicate Groups */}
+      {duplicateGroups.length > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-400">
+            <GitMerge className="h-4 w-4" />
+            Possible Duplicates ({duplicateGroups.length} {duplicateGroups.length === 1 ? 'group' : 'groups'})
+          </h3>
+          <div className="space-y-3">
+            {duplicateGroups.map((group) => {
+              const groupKey = group.map(t => t.id).sort().join(':');
+              return (
+                <DuplicateGroupCard
+                  key={groupKey}
+                  groupKey={groupKey}
+                  group={group}
+                  onMerge={handleMergeDuplicate}
+                  onDismiss={handleDismissDuplicate}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Task List */}
       {loading ? (
         <div className="space-y-3">
@@ -462,9 +719,9 @@ export default function InboxPage() {
                 <button
                   onClick={selectAll}
                   className="min-h-[44px] text-xs font-medium text-muted-foreground hover:text-foreground sm:min-h-0"
-                  aria-label={selected.size === tasks.length ? 'Deselect all tasks' : `Select all ${tasks.length} tasks`}
+                  aria-label={selected.size === normalTasks.length ? 'Deselect all tasks' : `Select all ${normalTasks.length} tasks`}
                 >
-                  {selected.size === tasks.length ? 'Deselect all' : `Select all (${tasks.length})`}
+                  {selected.size === normalTasks.length ? 'Deselect all' : `Select all (${normalTasks.length})`}
                 </button>
                 {selected.size > 0 && (
                   <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">

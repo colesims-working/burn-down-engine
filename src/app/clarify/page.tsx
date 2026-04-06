@@ -431,6 +431,7 @@ export default function ClarifyPage() {
     }
 
     setProcessing(false);
+    window.dispatchEvent(new Event('llm-complete'));
   };
 
   const approveTask = async (index: number) => {
@@ -489,10 +490,28 @@ export default function ClarifyPage() {
     ));
   };
 
-  const rejectTask = (index: number) => {
-    setTasks(prev => prev.map((t, idx) =>
-      idx === index ? { ...t, status: 'rejected', result: null, expanded: false, editing: false, editDraft: undefined } : t
-    ));
+  const rejectTask = async (index: number) => {
+    const task = tasks[index];
+    if (!task) return;
+
+    // If this task was split, clean up the split children from Todoist
+    const children = tasks.filter(t => t.splitFromId === task.id);
+    setTasks(prev =>
+      prev.filter(t => t.splitFromId !== task.id).map((t, idx) =>
+        idx === index ? { ...t, status: 'rejected' as const, result: null, expanded: false, editing: false, editDraft: undefined, splitInto: undefined } : t
+      )
+    );
+
+    // Delete split children from Todoist (non-blocking)
+    for (const child of children) {
+      try {
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', taskId: child.id }),
+        });
+      } catch {}
+    }
   };
 
   const completeTaskInClarify = async (index: number) => {
@@ -599,8 +618,8 @@ export default function ClarifyPage() {
       if (res.ok) {
         const result = sanitizeResult(await res.json());
 
-        // Auto-split if LLM says decomposition is needed
-        const didSplit = await autoSplitIfNeeded(result, taskId);
+        // Auto-split if LLM says decomposition is needed (respect noSplit flag)
+        const didSplit = !task.noSplit && await autoSplitIfNeeded(result, taskId);
         if (didSplit) return;
 
         const needsInput = result.confidence < 0.7 && (result.questions?.length ?? 0) > 0;
@@ -699,6 +718,7 @@ export default function ClarifyPage() {
   // Tasks with a splitFromId whose parent is still awaiting confirmation are shown under the parent banner, not in pending
   const awaitingSplitParentIds = new Set(tasks.filter(t => t.status === 'done' && t.splitInto).map(t => t.id));
   const pendingTasks = tasks.filter(t => (t.status === 'pending' || t.status === 'error') && !awaitingSplitParentIds.has(t.splitFromId || ''));
+  const processingTasks = tasks.filter(t => t.status === 'processing' && !t.streamText);
   const selectedCount = pendingTasks.filter(t => t.selected).length;
   // Only count tasks that are actually visible (have results and no splitInto flag)
   const doneTasks = tasks.filter(t => t.status === 'done' && !t.splitInto && t.result);
@@ -1058,13 +1078,13 @@ export default function ClarifyPage() {
             </div>
           )}
 
-          {/* Pending Section */}
-          {pendingTasks.length > 0 && (
+          {/* Pending Section (also shows processing tasks) */}
+          {(pendingTasks.length > 0 || processingTasks.length > 0) && (
             <div>
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <h2 className="text-sm font-semibold text-muted-foreground">
-                    Pending ({pendingTasks.length})
+                    {processingTasks.length > 0 ? `Processing (${processingTasks.length})` : `Pending (${pendingTasks.length})`}
                   </h2>
                   {selectedCount > 0 && selectedCount < pendingTasks.length && (
                     <span className="rounded-full bg-primary/20 px-2.5 py-0.5 text-xs font-medium text-primary">

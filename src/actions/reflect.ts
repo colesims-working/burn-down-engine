@@ -5,6 +5,8 @@ import { llmGenerateJSON } from '@/lib/llm/router';
 import { buildContext } from '@/lib/llm/context';
 import { DAILY_OBSERVATIONS_PROMPT, WEEKLY_REVIEW_PROMPT } from '@/lib/llm/prompts/engage';
 import { processInlineKnowledge } from '@/lib/llm/extraction';
+import { flushExtractionBuffer } from '@/lib/knowledge/extraction';
+import { runConsolidation, shouldAutoConsolidate } from '@/lib/knowledge/consolidation';
 import { bumpTask, blockTask } from '@/lib/priority/engine';
 import { killTaskInTodoist } from '@/lib/todoist/sync';
 import { format, startOfWeek, subDays } from 'date-fns';
@@ -12,6 +14,9 @@ import { eq, and, gte, lte, ne } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 export async function getDailyReviewData(date?: string) {
+  // Flush extraction buffer at daily review start (fire-and-forget)
+  void flushExtractionBuffer().catch(() => {});
+
   const reviewDate = date || format(new Date(), 'yyyy-MM-dd');
 
   // Get today's completed tasks
@@ -177,6 +182,20 @@ export async function saveDailyReview(data: {
 }
 
 export async function generateWeeklyReview() {
+  // Flush extraction buffer at weekly review start (fire-and-forget)
+  void flushExtractionBuffer().catch(() => {});
+
+  // Consolidation pre-step: run if budget exceeded or as weekly maintenance
+  try {
+    const needsConsolidation = await shouldAutoConsolidate();
+    if (needsConsolidation) {
+      await runConsolidation({ scope: 'full' });
+    } else {
+      // Lightweight: just dormancy + reference cleanup
+      await runConsolidation({ scope: 'active_only' });
+    }
+  } catch {}
+
   const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
   const weekEnd = format(new Date(), 'yyyy-MM-dd');
 

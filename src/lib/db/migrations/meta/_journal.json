@@ -8,6 +8,20 @@
       "when": 1775325592749,
       "tag": "0000_next_gladiator",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1775398216815,
+      "tag": "0001_cooing_rockslide",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1775440677259,
+      "tag": "0002_romantic_micromax",
+      "breakpoints": true
     }
   ]
 }

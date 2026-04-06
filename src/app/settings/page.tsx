@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Key, RefreshCw, Database, Cpu, Download, AlertTriangle, Play, CheckCircle, XCircle, Loader2, Zap, ChevronDown, Shield, EyeOff, Eye, BarChart3 } from 'lucide-react';
+import { Settings, Key, RefreshCw, Database, Cpu, Download, AlertTriangle, Play, CheckCircle, XCircle, Loader2, Zap, ChevronDown, Shield, EyeOff, Eye, BarChart3, Archive, ArrowRight, Brain } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/shared/ui-parts';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -47,6 +48,7 @@ const OPERATION_LABELS: Record<string, { label: string; description: string }> =
 const OPERATIONS = Object.keys(OPERATION_LABELS);
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [syncState, setSyncState] = useState<{ lastFullSync: string | null; lastInboxSync: string | null } | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, 'ok' | 'fail' | 'testing' | null>>({
@@ -90,14 +92,36 @@ export default function SettingsPage() {
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(null);
   const [savingDisabled, setSavingDisabled] = useState(false);
 
+  // Legacy onboarding state
+  const [legacyCount, setLegacyCount] = useState<number | null>(null);
+  const [dupeSimilarityThreshold, setDupeSimilarityThreshold] = useState(0.92);
+
+  // Knowledge migration state
+  const [knowledgeMigrated, setKnowledgeMigrated] = useState<boolean | null>(null);
+  const [migratingKnowledge, setMigratingKnowledge] = useState(false);
+  const [migrationResult, setMigrationResult] = useState<{ objectsMigrated: number; peopleMigrated: number; embeddingsGenerated: number; errors: string[] } | null>(null);
+
+  // Knowledge embedding/export state
+  const [embeddingStats, setEmbeddingStats] = useState<{ withEmbedding: number; withoutEmbedding: number; embeddingModel: string } | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // Knowledge consolidation state
+  const [consolidating, setConsolidating] = useState(false);
+  const [consolidationResult, setConsolidationResult] = useState<{
+    runId: string; dormancyTransitions: number; mergesPerformed: number;
+    synthesesCreated: number; objectsAbsorbed: number; referencesPurged: number; errors: string[];
+  } | null>(null);
+
   const [settingsError, setSettingsError] = useState<string | null>(null);
 
   const loadSettings = useCallback(async () => {
     try {
-      const [settingsRes, modelsRes, syncRes] = await Promise.all([
+      const [settingsRes, modelsRes, syncRes, legacyRes] = await Promise.all([
         fetch('/api/todoist?action=app-settings'),
         fetch('/api/todoist?action=available-models'),
         fetch('/api/todoist?action=sync-state'),
+        fetch('/api/todoist?action=legacy-count'),
       ]);
 
       if (settingsRes.ok) {
@@ -106,11 +130,37 @@ export default function SettingsPage() {
           setModelConfig(data.modelConfig);
         }
         setAutoApproveThreshold(data.autoApproveThreshold ?? 0.8);
+        setDupeSimilarityThreshold(data.dupeSimilarityThreshold ?? 0.92);
         setMonthlyBudget(data.monthlyBudget ?? null);
         if (Array.isArray(data.disabledModels)) {
           setDisabledModels(data.disabledModels);
         }
       }
+
+      if (legacyRes.ok) {
+        const data = await legacyRes.json();
+        setLegacyCount(data.count ?? 0);
+      }
+
+      // Check knowledge migration status and embedding stats (best-effort)
+      try {
+        const [kgRes, embRes] = await Promise.all([
+          fetch('/api/todoist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'knowledge-migration-status' }),
+          }),
+          fetch('/api/todoist?action=knowledge-stats'),
+        ]);
+        if (kgRes.ok) {
+          const data = await kgRes.json();
+          setKnowledgeMigrated(data.migrated);
+        }
+        if (embRes.ok) {
+          const data = await embRes.json();
+          setEmbeddingStats({ withEmbedding: data.withEmbedding ?? 0, withoutEmbedding: data.withoutEmbedding ?? 0, embeddingModel: data.embeddingModel ?? 'unknown' });
+        }
+      } catch {}
 
       if (modelsRes.ok) {
         const data = await modelsRes.json();
@@ -130,6 +180,17 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { loadSettings(); }, [loadSettings]);
+
+  // Refresh legacy count when tasks change (e.g., after onboarding)
+  useEffect(() => {
+    const handler = () => {
+      fetch('/api/todoist?action=legacy-count').then(r => r.ok ? r.json() : null).then(d => {
+        if (d) setLegacyCount(d.count ?? 0);
+      }).catch(() => {});
+    };
+    window.addEventListener('task-changed', handler);
+    return () => window.removeEventListener('task-changed', handler);
+  }, []);
 
   const loadUsageStats = useCallback(async (period: string) => {
     setUsageLoading(true);
@@ -211,7 +272,7 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'update-settings',
-          data: { modelConfig, autoApproveThreshold, disabledModels },
+          data: { modelConfig, autoApproveThreshold, dupeSimilarityThreshold, disabledModels },
         }),
       });
       if (res.ok) {
@@ -606,6 +667,25 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* Duplicate similarity threshold */}
+              <div className="rounded-lg bg-secondary/50 px-4 py-3">
+                <label className="block text-sm font-medium mb-1">Duplicate Detection Threshold</label>
+                <p className="text-xs text-muted-foreground mb-2">Tasks with embedding similarity above this are flagged as possible duplicates. Lower = more aggressive (more false positives but fewer missed duplicates).</p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="0.95"
+                    step="0.05"
+                    value={dupeSimilarityThreshold}
+                    onChange={(e) => setDupeSimilarityThreshold(parseFloat(e.target.value))}
+                    aria-label="Duplicate similarity threshold"
+                    className="flex-1"
+                  />
+                  <span className="text-sm font-mono w-12 text-right">{Math.round(dupeSimilarityThreshold * 100)}%</span>
+                </div>
+              </div>
+
               {/* Save */}
               <div className="flex items-center gap-3 pt-1">
                 <button
@@ -751,6 +831,242 @@ export default function SettingsPage() {
               Reset Knowledge Base
             </button>
           </div>
+        </Section>
+
+        {/* Legacy Task Onboarding */}
+        <Section icon={Archive} title="Legacy Task Onboarding" description="Enrich imported Todoist tasks that were never clarified">
+          <p className="text-xs text-muted-foreground mb-3">
+            Tasks imported from Todoist via full sync that have no LLM enrichment (no next action, time estimate, or energy level).
+            Onboarding runs the clarify process on them in bulk, using their existing Todoist metadata as context.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push('/onboard')}
+              disabled={legacyCount === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:py-2"
+            >
+              Start Onboarding {legacyCount != null && legacyCount > 0 && `(${legacyCount})`}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+            {legacyCount === 0 && (
+              <span className="text-xs text-green-400">All tasks enriched</span>
+            )}
+            {legacyCount == null && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+          </div>
+        </Section>
+
+        {/* Knowledge Graph Migration */}
+        <Section icon={Brain} title="Knowledge Graph Migration" description="Migrate legacy knowledge entries and people to the new knowledge graph">
+          <p className="text-xs text-muted-foreground mb-3">
+            Copies your existing knowledge entries and people into the new ontology-driven knowledge graph with typed objects, relationships, and semantic embeddings. This is a one-time operation.
+          </p>
+          {migrationResult && (
+            <div className={cn(
+              'mb-3 rounded-lg p-3 text-xs',
+              migrationResult.errors.length > 0 ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-green-500/30 bg-green-500/5'
+            )}>
+              <div className="font-medium">
+                Migrated {migrationResult.objectsMigrated} knowledge entries, {migrationResult.peopleMigrated} people, generated {migrationResult.embeddingsGenerated} embeddings
+              </div>
+              {migrationResult.errors.length > 0 && (
+                <div className="mt-1 text-amber-400">
+                  {migrationResult.errors.length} warning(s): {migrationResult.errors[0]}
+                  {migrationResult.errors.length > 1 && ` (+${migrationResult.errors.length - 1} more)`}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={async () => {
+                setMigratingKnowledge(true);
+                setMigrationResult(null);
+                try {
+                  const res = await fetch('/api/todoist', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'migrate-knowledge' }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    setMigrationResult(data);
+                    setKnowledgeMigrated(true);
+                  } else {
+                    setMigrationResult({ objectsMigrated: 0, peopleMigrated: 0, embeddingsGenerated: 0, errors: ['Migration request failed'] });
+                  }
+                } catch {
+                  setMigrationResult({ objectsMigrated: 0, peopleMigrated: 0, embeddingsGenerated: 0, errors: ['Network error'] });
+                } finally {
+                  setMigratingKnowledge(false);
+                }
+              }}
+              disabled={migratingKnowledge || knowledgeMigrated === true}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:py-2"
+            >
+              {migratingKnowledge ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+              {migratingKnowledge ? 'Migrating...' : knowledgeMigrated ? 'Migration Complete' : 'Migrate Legacy Knowledge'}
+            </button>
+            {knowledgeMigrated && !migrationResult && (
+              <span className="text-xs text-green-400">Already migrated</span>
+            )}
+          </div>
+        </Section>
+
+        {/* Knowledge Consolidation */}
+        <Section icon={Brain} title="Knowledge Consolidation" description="Compress the knowledge graph: fade stale objects, merge duplicates, synthesize patterns">
+          <p className="text-xs text-muted-foreground mb-3">
+            Runs automatically as a weekly review pre-step. Manual trigger here for immediate consolidation.
+            Dormant objects are faded (not deleted). Duplicate merges and pattern syntheses are LLM-evaluated.
+          </p>
+          {consolidationResult && (
+            <div className={cn(
+              'mb-3 rounded-lg p-3 text-xs',
+              consolidationResult.errors.length > 0 ? 'border border-amber-500/30 bg-amber-500/5' : 'border border-green-500/30 bg-green-500/5'
+            )}>
+              <div className="font-medium">
+                {consolidationResult.dormancyTransitions} dormant, {consolidationResult.mergesPerformed} merges, {consolidationResult.synthesesCreated} syntheses, {consolidationResult.objectsAbsorbed} absorbed, {consolidationResult.referencesPurged} refs purged
+              </div>
+              {consolidationResult.errors.length > 0 && (
+                <div className="mt-1 text-amber-400">
+                  {consolidationResult.errors.length} warning(s): {consolidationResult.errors[0]}
+                  {consolidationResult.errors.length > 1 && ` (+${consolidationResult.errors.length - 1} more)`}
+                </div>
+              )}
+              <button
+                onClick={async () => {
+                  if (!confirm('Revert this consolidation run? This will restore absorbed objects and delete syntheses.')) return;
+                  try {
+                    const res = await fetch('/api/todoist', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'revert-consolidation', runId: consolidationResult.runId }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.reverted) {
+                        setConsolidationResult(null);
+                        toast({ title: 'Consolidation reverted', duration: 3000 });
+                      } else {
+                        toast({ title: 'Revert failed', description: data.error, duration: 5000 });
+                      }
+                    }
+                  } catch {}
+                }}
+                className="mt-2 text-[10px] text-muted-foreground underline hover:text-foreground"
+              >
+                Revert this run
+              </button>
+            </div>
+          )}
+          <button
+            onClick={async () => {
+              setConsolidating(true);
+              setConsolidationResult(null);
+              try {
+                const res = await fetch('/api/todoist', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'consolidate-knowledge', scope: 'full' }),
+                });
+                if (res.ok) {
+                  setConsolidationResult(await res.json());
+                }
+              } catch {
+                toast({ title: 'Consolidation failed', duration: 5000 });
+              } finally {
+                setConsolidating(false);
+              }
+            }}
+            disabled={consolidating}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:py-2"
+          >
+            {consolidating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+            {consolidating ? 'Consolidating...' : 'Consolidate Knowledge'}
+          </button>
+        </Section>
+
+        {/* Knowledge Embeddings */}
+        <Section icon={Brain} title="Knowledge Embeddings" description="Embedding status and backfill for vector search">
+          {embeddingStats && (
+            <div className="flex flex-wrap gap-3 mb-3 text-xs">
+              <div className="rounded-lg bg-secondary px-3 py-2"><span className="text-muted-foreground">With embeddings:</span> <span className="font-medium">{embeddingStats.withEmbedding}</span></div>
+              <div className="rounded-lg bg-secondary px-3 py-2"><span className="text-muted-foreground">Without:</span> <span className="font-medium">{embeddingStats.withoutEmbedding}</span></div>
+              <div className="rounded-lg bg-secondary px-3 py-2"><span className="text-muted-foreground">Model:</span> <span className="font-mono">{embeddingStats.embeddingModel}</span></div>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                setBackfilling(true);
+                try {
+                  const res = await fetch('/api/todoist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'kg-backfill-embeddings' }) });
+                  if (res.ok) { const d = await res.json(); toast({ title: `Backfill complete`, description: `${d.generated} embeddings generated`, duration: 4000 }); }
+                } finally { setBackfilling(false); loadSettings(); }
+              }}
+              disabled={backfilling || (embeddingStats?.withoutEmbedding ?? 0) === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {backfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Backfill Missing ({embeddingStats?.withoutEmbedding ?? 0})
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('Regenerate ALL embeddings? This will re-embed every object and may take a while.')) return;
+                setBackfilling(true);
+                try {
+                  const res = await fetch('/api/todoist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'kg-backfill-embeddings', regenerateAll: true }) });
+                  if (res.ok) { const d = await res.json(); toast({ title: `Regeneration complete`, description: `${d.generated} embeddings regenerated`, duration: 4000 }); }
+                } finally { setBackfilling(false); loadSettings(); }
+              }}
+              disabled={backfilling}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent disabled:opacity-50"
+            >
+              Regenerate All
+            </button>
+          </div>
+        </Section>
+
+        {/* Knowledge Export/Import */}
+        <Section icon={Database} title="Knowledge Export / Import" description="Full knowledge graph export and additive import">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/todoist?action=knowledge-export');
+                  if (res.ok) {
+                    const data = await res.json();
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `knowledge-graph-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    setTimeout(() => URL.revokeObjectURL(url), 200);
+                  }
+                } catch { toast({ title: 'Export failed', duration: 4000 }); }
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Download className="h-4 w-4" /> Export Knowledge Graph
+            </button>
+            <label className={cn('inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer', importing && 'opacity-50 pointer-events-none')}>
+              <Download className="h-4 w-4 rotate-180" /> Import (Additive)
+              <input type="file" accept=".json" className="hidden" onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setImporting(true);
+                try {
+                  const text = await file.text();
+                  const data = JSON.parse(text);
+                  const res = await fetch('/api/todoist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'kg-import', data }) });
+                  if (res.ok) { const d = await res.json(); toast({ title: 'Import complete', description: `${d.objectsImported} objects, ${d.linksImported} links imported`, duration: 4000 }); }
+                } catch { toast({ title: 'Import failed', duration: 4000 }); }
+                finally { setImporting(false); e.target.value = ''; }
+              }} />
+            </label>
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">Import is additive — objects are matched by dedup key. Duplicates are merged, not overwritten.</p>
         </Section>
 
         {/* Usage Dashboard */}

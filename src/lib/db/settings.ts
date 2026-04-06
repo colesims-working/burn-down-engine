@@ -43,6 +43,7 @@ const DEFAULTS: schema.AppSettings = {
   modelConfig: JSON.stringify(DEFAULT_MODEL_CONFIG),
   disabledModels: '[]',
   autoApproveThreshold: 0.8,
+  dupeSimilarityThreshold: 0.65,
   monthlyBudget: null,
   updatedAt: null,
 };
@@ -58,6 +59,7 @@ export async function getAppSettings(): Promise<schema.AppSettings> {
     modelConfig: row.modelConfig || DEFAULTS.modelConfig,
     disabledModels: row.disabledModels || DEFAULTS.disabledModels,
     autoApproveThreshold: row.autoApproveThreshold ?? DEFAULTS.autoApproveThreshold,
+    dupeSimilarityThreshold: row.dupeSimilarityThreshold ?? DEFAULTS.dupeSimilarityThreshold,
   };
 }
 
@@ -87,6 +89,7 @@ export async function updateAppSettings(data: {
   modelConfig?: ModelConfig;
   disabledModels?: string[];
   autoApproveThreshold?: number;
+  dupeSimilarityThreshold?: number;
   monthlyBudget?: number | null;
 }): Promise<schema.AppSettings> {
   const current = await getAppSettings();
@@ -110,6 +113,7 @@ export async function updateAppSettings(data: {
         modelConfig: merged.modelConfig,
         disabledModels: merged.disabledModels,
         autoApproveThreshold: merged.autoApproveThreshold,
+        dupeSimilarityThreshold: merged.dupeSimilarityThreshold,
         monthlyBudget: merged.monthlyBudget,
         updatedAt: merged.updatedAt,
       },

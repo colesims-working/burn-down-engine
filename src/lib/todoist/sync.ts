@@ -42,6 +42,8 @@ export async function syncInbox(): Promise<schema.Task[]> {
       const now = new Date().toISOString();
 
       if (existing) {
+        // Don't overwrite status if the task has been locally completed/killed
+        const preserveStatus = existing.status === 'completed' || existing.status === 'killed';
         const updated = await db.update(schema.tasks)
           .set({
             title: tt.content,
@@ -50,7 +52,7 @@ export async function syncInbox(): Promise<schema.Task[]> {
             labels: JSON.stringify(tt.labels),
             isRecurring: tt.due?.is_recurring || false,
             recurrenceRule: tt.due?.string || null,
-            status: 'inbox',
+            ...(preserveStatus ? {} : { status: 'inbox' as const }),
             todoistSyncedAt: now,
             updatedAt: now,
           })
