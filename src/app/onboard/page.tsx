@@ -21,6 +21,8 @@ interface ClarifyResult {
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
   contextNotes: string;
+  definitionOfDone: string;
+  nonGoals: string;
   relatedPeople: string[];
   relatedLinks: string[];
   decompositionNeeded: boolean;
@@ -69,6 +71,8 @@ const sanitizeResult = (r: any): ClarifyResult => ({
   timeEstimateMin: r.timeEstimateMin || 0,
   energyLevel: r.energyLevel || 'medium',
   contextNotes: r.contextNotes || '',
+  definitionOfDone: r.definitionOfDone || '',
+  nonGoals: r.nonGoals || '',
   relatedPeople: Array.isArray(r.relatedPeople) ? r.relatedPeople : [],
   relatedLinks: Array.isArray(r.relatedLinks) ? r.relatedLinks : [],
   decompositionNeeded: false, // Always false for legacy enrichment

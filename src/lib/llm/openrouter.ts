@@ -33,7 +33,7 @@ export async function openrouterGenerate(opts: {
   const endTime = Date.now();
 
   if (opts.operation) {
-    await trackLLMInteraction({
+    void trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,
@@ -73,7 +73,7 @@ export async function openrouterGenerateJSON<T>(opts: {
   const endTime = Date.now();
 
   if (opts.operation) {
-    await trackLLMInteraction({
+    void trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,

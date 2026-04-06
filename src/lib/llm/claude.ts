@@ -27,7 +27,7 @@ export async function claudeGenerate(opts: {
   const text = textBlock?.text || '';
 
   if (opts.operation) {
-    await trackLLMInteraction({
+    void trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,

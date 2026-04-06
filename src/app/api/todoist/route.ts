@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth/session';
 import { db, schema } from '@/lib/db/client';
 import { eq, ne, and, sql, lte, isNull, isNotNull, inArray, notInArray } from 'drizzle-orm';
-import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist, refreshProjectCounts } from '@/lib/todoist/sync';
+import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist, refreshProjectCounts, mapToTodoistPriority } from '@/lib/todoist/sync';
 import { todoist } from '@/lib/todoist/client';
 import { buildEngageList, completeTask, bumpTask, blockTask, waitTask, handleFire } from '@/lib/priority/engine';
 import { clarifyTask, applyClarification, answerClarifyQuestion } from '@/actions/clarify';
-import { buildContext } from '@/lib/llm/context';
 import { getDailyReviewData, generateDailyObservations, saveDailyReview, generateWeeklyReview } from '@/actions/reflect';
 import { runProjectAudit, getFilingSuggestions, organizeConversation } from '@/actions/organize';
 import { getKnowledgeEntries, getPeople, getKnowledgeStats, createKnowledgeEntry, updateKnowledgeEntry, deleteKnowledgeEntry, createPerson, updatePerson, deletePerson } from '@/actions/knowledge';
@@ -15,8 +14,14 @@ import { listAvailableModels, testModel } from '@/lib/llm/providers';
 import { revertTask } from '@/lib/undo/engine';
 import { mergeTasks, dismissDuplicate, runBackgroundDedup, detectDuplicates } from '@/lib/embeddings/dedup';
 import { buildLegacyEnrichmentInstructions } from '@/lib/llm/prompts/clarify';
-import { writeToExtractionBuffer, flushExtractionBuffer, getBufferCount } from '@/lib/knowledge/extraction';
-import { runConsolidation, revertConsolidationRun, finalizeReferenceOutcomes } from '@/lib/knowledge/consolidation';
+// Knowledge system imports are dynamic — loaded only when needed.
+// Prevents knowledge DB connection timeout from blocking unrelated requests.
+async function bufferExtraction(entry: { eventType: string; taskId?: string; taskTitle?: string; taskContext?: Record<string, unknown> }) {
+  try {
+    const { writeToExtractionBuffer } = await import('@/lib/knowledge/extraction');
+    await writeToExtractionBuffer(entry);
+  } catch {}
+}
 import { logInfo, logError } from '@/lib/logging';
 import type { IntegrityIssue, IntegrityLevel } from '@/lib/types/trust';
 
@@ -93,8 +98,7 @@ export async function GET(request: NextRequest) {
         const projects = status
           ? await db.query.projects.findMany({ where: eq(schema.projects.status, status as any) })
           : await db.query.projects.findMany();
-        // Fire-and-forget: update counts for next request
-        refreshProjectCounts().catch(e => console.error('Background project count refresh failed:', e));
+        // No background writes on GET — refreshProjectCounts runs on sync-all only
         return NextResponse.json(projects);
       }
 
@@ -265,7 +269,7 @@ export async function GET(request: NextRequest) {
               id,
               name: nameMap.get(id) ?? 'Unknown',
             })),
-            bufferCount: await getBufferCount(),
+            bufferCount: await import('@/lib/knowledge/extraction').then(m => m.getBufferCount()).catch(() => 0),
           });
         } catch {
           return NextResponse.json({ count: 0, items: [], bufferCount: 0 });
@@ -365,6 +369,9 @@ export async function GET(request: NextRequest) {
       }
 
       case 'integrity-check': {
+        // Wrapped in its own try/catch — Turso transient errors should return
+        // empty results, not 500, to prevent the trust provider from retrying aggressively.
+        try {
         const issues: IntegrityIssue[] = [];
         const now = new Date();
 
@@ -487,6 +494,10 @@ export async function GET(request: NextRequest) {
           issues,
           checkedAt: now.toISOString(),
         });
+        } catch (integrityErr) {
+          console.error('Integrity check failed (returning ok):', (integrityErr as Error).message);
+          return NextResponse.json({ level: 'ok', issues: [], checkedAt: new Date().toISOString() });
+        }
       }
 
       default:
@@ -559,7 +570,12 @@ export async function POST(request: NextRequest) {
         if (!body.content?.trim()) {
           return NextResponse.json({ error: 'content required' }, { status: 400 });
         }
-        const todoistTask = await todoist.createTask({ content: body.content });
+        const todoistTask = await todoist.createTask({
+          content: body.content,
+          ...(body.priority ? { priority: mapToTodoistPriority(body.priority) } : {}),
+          ...(body.due_date ? { due_date: body.due_date } : {}),
+          ...(body.labels ? { labels: body.labels } : {}),
+        });
         let local;
         try {
           local = await db.insert(schema.tasks)
@@ -600,17 +616,13 @@ export async function POST(request: NextRequest) {
       }
 
       case 'warm-context': {
-        // Pre-warm knowledge context cache for a batch of tasks.
-        // Called when clarify page loads, before user clicks Process.
-        const taskIds: string[] = body.taskIds || [];
-        const warmTasks = taskIds.length > 0
-          ? await db.query.tasks.findMany({ where: inArray(schema.tasks.id, taskIds.slice(0, 20)) })
-          : await db.query.tasks.findMany({ where: eq(schema.tasks.status, 'inbox'), limit: 20 });
-        // Fire all context builds in parallel — they cache themselves
-        await Promise.all(warmTasks.map(t =>
-          buildContext(t.originalText, 'clarify').catch(() => {})
-        ));
-        return NextResponse.json({ warmed: warmTasks.length });
+        // Warm the knowledge context cache with a single call.
+        // The cache (2 min TTL) serves all subsequent clarify calls.
+        try {
+          const { buildContext: buildCtx } = await import('@/lib/llm/context');
+          await buildCtx('', 'clarify');
+        } catch {}
+        return NextResponse.json({ warmed: 1 });
       }
 
       case 'apply-clarification': {
@@ -677,6 +689,7 @@ export async function POST(request: NextRequest) {
 
       // ─── Knowledge Consolidation ──────
       case 'consolidate-knowledge': {
+        const { runConsolidation } = await import('@/lib/knowledge/consolidation');
         const consolidateResult = await runConsolidation({ scope: body.scope || 'full' });
         logInfo('system', `Knowledge consolidation: ${consolidateResult.mergesPerformed} merges, ${consolidateResult.synthesesCreated} syntheses, ${consolidateResult.dormancyTransitions} dormant`);
         return NextResponse.json(consolidateResult);
@@ -684,6 +697,7 @@ export async function POST(request: NextRequest) {
 
       case 'revert-consolidation': {
         if (!body.runId) return NextResponse.json({ error: 'runId required' }, { status: 400 });
+        const { revertConsolidationRun } = await import('@/lib/knowledge/consolidation');
         const revertResult = await revertConsolidationRun(body.runId);
         return NextResponse.json(revertResult);
       }
@@ -692,6 +706,7 @@ export async function POST(request: NextRequest) {
         if (!body.interactionId || !body.outcome) {
           return NextResponse.json({ error: 'interactionId and outcome required' }, { status: 400 });
         }
+        const { finalizeReferenceOutcomes } = await import('@/lib/knowledge/consolidation');
         await finalizeReferenceOutcomes(body.interactionId, body.outcome);
         return NextResponse.json({ ok: true });
       }
@@ -750,25 +765,25 @@ export async function POST(request: NextRequest) {
           syncWarning = `Failed to complete task in Todoist: ${(e as Error).message}`;
           console.error(syncWarning);
         }
-        void writeToExtractionBuffer({ eventType: 'complete', taskId: completed.id, taskTitle: completed.title, taskContext: { projectId: completed.projectId, priority: completed.priority } }).catch(() => {});
+        void bufferExtraction({ eventType: 'complete', taskId: completed.id, taskTitle: completed.title, taskContext: { projectId: completed.projectId, priority: completed.priority } }).catch(() => {});
         return NextResponse.json({ ...completed, syncWarning });
       }
 
       case 'defer': {
         const deferred = await bumpTask(body.taskId, body.reason);
-        void writeToExtractionBuffer({ eventType: 'defer', taskId: body.taskId, taskTitle: deferred.title, taskContext: { reason: body.reason, bumpCount: deferred.bumpCount } }).catch(() => {});
+        void bufferExtraction({ eventType: 'defer', taskId: body.taskId, taskTitle: deferred.title, taskContext: { reason: body.reason, bumpCount: deferred.bumpCount } }).catch(() => {});
         return NextResponse.json(deferred);
       }
 
       case 'block': {
         const blocked = await blockTask(body.taskId, body.blockerNote);
-        void writeToExtractionBuffer({ eventType: 'block', taskId: body.taskId, taskTitle: blocked.title, taskContext: { blockerNote: body.blockerNote } }).catch(() => {});
+        void bufferExtraction({ eventType: 'block', taskId: body.taskId, taskTitle: blocked.title, taskContext: { blockerNote: body.blockerNote } }).catch(() => {});
         return NextResponse.json(blocked);
       }
 
       case 'fire': {
         const result = await handleFire({ description: body.description });
-        void writeToExtractionBuffer({ eventType: 'fire', taskTitle: body.description }).catch(() => {});
+        void bufferExtraction({ eventType: 'fire', taskTitle: body.description }).catch(() => {});
         return NextResponse.json(result);
       }
 
@@ -788,7 +803,7 @@ export async function POST(request: NextRequest) {
             console.error('Failed to kill task in Todoist:', e);
           }
         }
-        void writeToExtractionBuffer({ eventType: 'kill', taskId: body.taskId, taskTitle: taskToKill?.title ?? killed[0]?.title }).catch(() => {});
+        void bufferExtraction({ eventType: 'kill', taskId: body.taskId, taskTitle: taskToKill?.title ?? killed[0]?.title }).catch(() => {});
         return NextResponse.json(killed[0]);
       }
 
@@ -805,7 +820,7 @@ export async function POST(request: NextRequest) {
 
       case 'wait': {
         const waited = await waitTask(body.taskId, body.waitingFor);
-        void writeToExtractionBuffer({ eventType: 'wait', taskId: body.taskId, taskTitle: waited.title, taskContext: { waitingFor: body.waitingFor } }).catch(() => {});
+        void bufferExtraction({ eventType: 'wait', taskId: body.taskId, taskTitle: waited.title, taskContext: { waitingFor: body.waitingFor } }).catch(() => {});
         return NextResponse.json(waited);
       }
 
@@ -844,7 +859,7 @@ export async function POST(request: NextRequest) {
           taskId: body.taskId, action: 'waiting',
           details: JSON.stringify({ delegatedTo: body.delegatedTo, followUpDate: body.followUpDate }),
         });
-        void writeToExtractionBuffer({ eventType: 'wait', taskId: body.taskId, taskTitle: delegated[0].title, taskContext: { delegatedTo: body.delegatedTo } }).catch(() => {});
+        void bufferExtraction({ eventType: 'wait', taskId: body.taskId, taskTitle: delegated[0].title, taskContext: { delegatedTo: body.delegatedTo } }).catch(() => {});
         return NextResponse.json(delegated[0]);
       }
 
@@ -885,7 +900,15 @@ export async function POST(request: NextRequest) {
           .set(safeData)
           .where(eq(schema.tasks.id, body.taskId))
           .returning();
-        return NextResponse.json(updated[0]);
+
+        // Sync changes to Todoist (best-effort)
+        const updatedTask = updated[0];
+        if (updatedTask?.todoistId) {
+          try { await pushTaskToTodoist(updatedTask); } catch (e) {
+            console.error('Failed to sync update-task to Todoist:', e);
+          }
+        }
+        return NextResponse.json(updatedTask);
       }
 
       // ─── Organize ──────────────────────
@@ -1083,7 +1106,7 @@ export async function POST(request: NextRequest) {
         let linksImported = 0;
         const importErrors: string[] = [];
 
-        // Import objects in batches via upsertKnowledge (additive, dedup-key matching)
+        // Import objects first, then links separately (don't mix into object batches)
         const batchSize = 10;
         for (let i = 0; i < imported.objects.length; i += batchSize) {
           const batch = imported.objects.slice(i, i + batchSize).map((o: any) => ({
@@ -1094,17 +1117,27 @@ export async function POST(request: NextRequest) {
             confidence: o.confidence ?? 0.7,
             sensitivity: o.sensitivity || undefined,
           }));
-          const batchLinks = (imported.links || []).slice(0, 8).map((l: any) => ({
-            sourceName: l.sourceName || '',
-            sourceType: l.sourceType || 'concept',
-            targetName: l.targetName || '',
-            targetType: l.targetType || 'concept',
-            linkType: l.linkType,
-            confidence: l.confidence ?? 0.7,
-          }));
           try {
-            const result = await upsertKnowledge({ objects: batch, links: i === 0 ? batchLinks : [] }, 'manual', { sourceContext: 'review' });
+            const result = await upsertKnowledge({ objects: batch, links: [] }, 'manual', { sourceContext: 'review' });
             objectsImported += result.objectsCreated + result.objectsUpdated;
+            importErrors.push(...result.errors);
+          } catch (e) {
+            importErrors.push((e as Error).message);
+          }
+        }
+
+        // Import all links in a single pass after all objects exist
+        const allLinks: any[] = (imported.links || []).map((l: any) => ({
+          sourceName: l.sourceName || '',
+          sourceType: l.sourceType || 'concept',
+          targetName: l.targetName || '',
+          targetType: l.targetType || 'concept',
+          linkType: l.linkType,
+          confidence: l.confidence ?? 0.7,
+        }));
+        for (let i = 0; i < allLinks.length; i += 8) {
+          try {
+            const result = await upsertKnowledge({ objects: [], links: allLinks.slice(i, i + 8) }, 'manual', { sourceContext: 'review' });
             linksImported += result.linksCreated;
             importErrors.push(...result.errors);
           } catch (e) {

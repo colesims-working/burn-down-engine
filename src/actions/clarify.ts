@@ -14,25 +14,41 @@ import { revalidatePath } from 'next/cache';
 // Caches buildContext() results by task text. Re-instruct on the same task
 // reuses the context instead of making another embedding API call.
 // TTL: 5 minutes. Cleared on module reload.
+// Per-task context cache with deduplication of in-flight requests.
+// If two concurrent calls request context for the same text, only one embedding
+// API call fires — the second waits for the first's result.
 const contextCache = new Map<string, { context: string; ts: number }>();
+const contextInFlight = new Map<string, Promise<string>>();
 const CONTEXT_CACHE_TTL = 5 * 60 * 1000;
 
 async function getCachedContext(input: string, page: 'inbox' | 'clarify' | 'organize' | 'engage' | 'reflect'): Promise<string> {
   const key = `${page}:${input}`;
+
+  // Check cache
   const cached = contextCache.get(key);
   if (cached && Date.now() - cached.ts < CONTEXT_CACHE_TTL) {
     return cached.context;
   }
-  const context = await buildContext(input, page);
-  contextCache.set(key, { context, ts: Date.now() });
-  // Prune old entries
-  if (contextCache.size > 50) {
-    const now = Date.now();
-    for (const [k, v] of contextCache) {
-      if (now - v.ts > CONTEXT_CACHE_TTL) contextCache.delete(k);
+
+  // Deduplicate: if another call for the same key is already in flight, wait for it
+  const inFlight = contextInFlight.get(key);
+  if (inFlight) return inFlight;
+
+  // Build and cache
+  const promise = buildContext(input, page).then(context => {
+    contextCache.set(key, { context, ts: Date.now() });
+    contextInFlight.delete(key);
+    // Prune old entries
+    if (contextCache.size > 100) {
+      const now = Date.now();
+      for (const [k, v] of contextCache) {
+        if (now - v.ts > CONTEXT_CACHE_TTL) contextCache.delete(k);
+      }
     }
-  }
-  return context;
+    return context;
+  });
+  contextInFlight.set(key, promise);
+  return promise;
 }
 
 interface ClarifyResult {
@@ -59,12 +75,15 @@ interface ClarifyResult {
 }
 
 export async function clarifyTask(taskId: string, additionalInstructions?: string): Promise<ClarifyResult> {
+  const t0 = Date.now();
   const task = await db.query.tasks.findFirst({
     where: eq(schema.tasks.id, taskId),
   });
   if (!task) throw new Error('Task not found');
+  const t1 = Date.now();
 
   const context = await getCachedContext(task.originalText, 'clarify');
+  const t2 = Date.now();
 
   const instructionSuffix = additionalInstructions
     ? `\n\n## Additional User Instructions\n${additionalInstructions}`
@@ -84,6 +103,8 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
     prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${previousClarification}${instructionSuffix}`,
     operation: 'clarify_task',
   });
+  const t3 = Date.now();
+  console.log(`[clarify] task=${task.title?.slice(0,30)} | db=${t1-t0}ms | context=${t2-t1}ms | llm=${t3-t2}ms | total=${t3-t0}ms`);
 
   // Store the clarification result on the task (but don't apply yet)
   await db.update(schema.tasks)
@@ -111,6 +132,7 @@ export async function applyClarification(
   if (!task) throw new Error('Task not found');
 
   // ── Step 1: Resolve or create project ──────────────────────
+  // Don't trust the LLM's newProject flag — if the project doesn't exist, create it.
   let projectId: string | null = null;
   let todoistProjectId: string | undefined;
   if (clarification.projectName) {
@@ -121,8 +143,8 @@ export async function applyClarification(
     if (existingProject) {
       projectId = existingProject.id;
       todoistProjectId = existingProject.todoistId || undefined;
-    } else if (clarification.newProject) {
-      // Create locally first (we'll get the todoistId in pushTaskToTodoist)
+    } else {
+      // Project doesn't exist locally — create it (regardless of newProject flag)
       const created = await db.insert(schema.projects)
         .values({
           name: clarification.projectName,

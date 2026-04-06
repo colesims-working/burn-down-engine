@@ -48,15 +48,43 @@ interface ScoredObject {
  * Backward-compatible: returns a plain string (markdown).
  * For callers needing metadata, use buildContextFull().
  */
+// ─── Retrieval Serialization ────────────────────────────────
+// Only ONE retrieval pipeline runs at a time. Concurrent calls wait and share
+// the result. This prevents 5 concurrent clarify calls from firing 40+ Turso
+// queries simultaneously, which causes SQLITE_NOMEM on the free tier.
+// Results cached for 2 minutes since the knowledge graph doesn't change mid-batch.
+let _contextCache: { context: string; ts: number } | null = null;
+let _contextInFlight: Promise<string> | null = null;
+const CONTEXT_CACHE_TTL = 120_000;
+
 export async function buildKnowledgeContext(
   input: string,
   page: PageContext | string,
 ): Promise<string> {
-  const result = await buildContextFull(input, page as PageContext);
-  const combined = [result.globalContext, result.retrievedContext]
-    .filter(s => s.length > 0)
-    .join('\n\n');
-  return combined;
+  // Cache hit — reuse recent context (knowledge graph doesn't change mid-batch)
+  if (_contextCache && Date.now() - _contextCache.ts < CONTEXT_CACHE_TTL) {
+    return _contextCache.context;
+  }
+
+  // If another retrieval is already running, wait for it instead of firing another
+  if (_contextInFlight) return _contextInFlight;
+
+  // Run the pipeline — only one at a time
+  const promise = (async () => {
+    try {
+      const result = await buildContextFull(input, page as PageContext);
+      const combined = [result.globalContext, result.retrievedContext]
+        .filter(s => s.length > 0)
+        .join('\n\n');
+      _contextCache = { context: combined, ts: Date.now() };
+      return combined;
+    } finally {
+      _contextInFlight = null;
+    }
+  })();
+
+  _contextInFlight = promise;
+  return promise;
 }
 
 /**
@@ -70,7 +98,9 @@ export async function buildContextFull(
   const allCandidates: ScoredObject[] = [];
 
   // ─── Stage 1: Global Context ────────────────────────────
+  const _tGlobal = Date.now();
   const globalContext = await buildGlobalContext();
+  console.log(`[retrieval] stage1 global: ${Date.now() - _tGlobal}ms`);
 
   // ─── Check cold start ───────────────────────────────────
   const activeCount = await knowledgeDb
@@ -99,25 +129,34 @@ export async function buildContextFull(
   } else if (input.trim().length > 0) {
     // ─── Stage 2: Semantic Recall ───────────────────────────
     let queryEmbedding: number[];
+    const embStart = Date.now();
     try {
       queryEmbedding = await generateQueryEmbedding(input, 'retrieval', 'retrieval');
     } catch (error) {
       console.error('Query embedding failed, falling back to global-only:', error);
       queryEmbedding = [];
     }
+    const embEnd = Date.now();
+    console.log(`[retrieval] embedding: ${embEnd - embStart}ms`);
 
     if (queryEmbedding.length > 0) {
+      const _tVec = Date.now();
       const vectorCandidates = await semanticRecall(queryEmbedding);
+      console.log(`[retrieval] stage2 vector search: ${Date.now() - _tVec}ms (${vectorCandidates.length} results)`);
       allCandidates.push(...vectorCandidates);
       vectorResults = vectorCandidates.length;
 
       // Dormant reactivation check (reuse same embedding)
+      const _tDorm = Date.now();
       const reactivated = await checkDormantReactivation(queryEmbedding);
+      console.log(`[retrieval] stage2 dormant check: ${Date.now() - _tDorm}ms`);
       reactivations = reactivated;
 
       // ─── Stage 3: Graph Expansion ───────────────────────────
+      const _tGraph = Date.now();
       const seeds = allCandidates.filter(c => c.source === 'vector').slice(0, 10);
       const expanded = await graphExpansion(seeds);
+      console.log(`[retrieval] stage3 graph expansion: ${Date.now() - _tGraph}ms (${expanded.length} results)`);
       const existingIds = new Set(allCandidates.map(c => c.id));
       const newExpanded = expanded.filter(e => !existingIds.has(e.id));
       allCandidates.push(...newExpanded);
@@ -210,24 +249,77 @@ async function buildGlobalContext(): Promise<string> {
 
 // ─── Stage 2: Semantic Recall ───────────────────────────────
 
-async function semanticRecall(queryEmbedding: number[]): Promise<ScoredObject[]> {
-  const inflatedK = Math.ceil(KNOWLEDGE_CONFIG.RETRIEVAL_TOP_K * KNOWLEDGE_CONFIG.RETRIEVAL_K_INFLATION);
+// ─── Object Cache for Client-Side Similarity ───────────────
+// Load all active objects with embeddings once, compute cosine similarity in JS.
+// Eliminates the 16KB vector_top_k payload that causes Turso latency spikes.
+let _objectCache: { objects: any[]; ts: number } | null = null;
+const OBJECT_CACHE_TTL = 120_000; // 2 minutes
 
-  // Raw SQL: vector_top_k for candidate set, vector_distance_cos for similarity score.
-  // vector_top_k returns only rowid; distance is computed via vector_distance_cos().
-  // Note: vector_distance_cos returns cosine distance (0 = identical), so similarity = 1 - distance.
-  const queryVec = JSON.stringify(queryEmbedding);
-  const vectorResults = await knowledgeDb.all<any>(sql`
-    SELECT o.id, o.type, o.subtype, o.name, o.properties, o.confidence,
-           o.updated_at, o.status, o.superseded_by, o.sensitivity, o.pinned,
-           (1.0 - vector_distance_cos(o.embedding, vector(${queryVec}))) AS similarity
-    FROM vector_top_k('objects_embedding_idx', vector(${queryVec}), ${inflatedK}) AS v
-    JOIN objects o ON o.rowid = v.id
-    WHERE o.status = 'active'
-      AND o.superseded_by IS NULL
-      AND o.pinned = 0
-    LIMIT ${KNOWLEDGE_CONFIG.RETRIEVAL_TOP_K}
-  `);
+async function getActiveObjectsWithEmbeddings(): Promise<any[]> {
+  if (_objectCache && Date.now() - _objectCache.ts < OBJECT_CACHE_TTL) {
+    return _objectCache.objects;
+  }
+  const objects = await knowledgeDb.query.objects.findMany({
+    where: and(eq(schema.objects.status, 'active'), sql`${schema.objects.embedding} IS NOT NULL`),
+  });
+  _objectCache = { objects, ts: Date.now() };
+  return objects;
+}
+
+function cosineSimArrays(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    dot += a[i] * b[i]; normA += a[i] * a[i]; normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+async function semanticRecall(queryEmbedding: number[]): Promise<ScoredObject[]> {
+  // Client-side similarity: load all objects once, rank by cosine similarity in JS.
+  // This avoids sending 16KB vector payloads to Turso which causes latency spikes.
+  const allObjects = await getActiveObjectsWithEmbeddings();
+
+  // Compute similarity for each object
+  const scored: { obj: any; similarity: number }[] = [];
+  for (const obj of allObjects) {
+    if (obj.pinned || obj.supersededBy) continue;
+    if (!obj.embedding) continue;
+
+    // Decode the stored embedding
+    let storedVec: number[];
+    try {
+      if (Array.isArray(obj.embedding)) {
+        storedVec = obj.embedding;
+      } else {
+        const buf = Buffer.from(obj.embedding as ArrayBuffer);
+        storedVec = Array.from(new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)));
+      }
+    } catch { continue; }
+
+    const similarity = cosineSimArrays(queryEmbedding, storedVec);
+    scored.push({ obj, similarity });
+  }
+
+  // Sort by similarity descending, take top K
+  scored.sort((a, b) => b.similarity - a.similarity);
+  const topK = scored.slice(0, KNOWLEDGE_CONFIG.RETRIEVAL_TOP_K);
+
+  const vectorResults = topK.map(s => ({
+    id: s.obj.id,
+    type: s.obj.type,
+    subtype: s.obj.subtype,
+    name: s.obj.name,
+    properties: s.obj.properties,
+    confidence: s.obj.confidence,
+    updated_at: s.obj.updatedAt,
+    status: s.obj.status,
+    superseded_by: s.obj.supersededBy,
+    sensitivity: s.obj.sensitivity,
+    pinned: s.obj.pinned,
+    similarity: s.similarity,
+  }));
 
   // Fetch reference counts for scoring
   const objectIds = vectorResults.map((r: any) => r.id);
@@ -270,22 +362,25 @@ async function semanticRecall(queryEmbedding: number[]): Promise<ScoredObject[]>
 // ─── Dormant Reactivation ───────────────────────────────────
 
 async function checkDormantReactivation(queryEmbedding: number[]): Promise<number> {
-  const dormantVec = JSON.stringify(queryEmbedding);
-  const dormantResults = await knowledgeDb.all<any>(sql`
-    SELECT o.id,
-           (1.0 - vector_distance_cos(o.embedding, vector(${dormantVec}))) AS similarity
-    FROM vector_top_k('objects_embedding_idx', vector(${dormantVec}), 5) AS v
-    JOIN objects o ON o.rowid = v.id
-    WHERE o.status = 'dormant'
-      AND o.superseded_by IS NULL
-  `);
+  // Client-side similarity check on dormant objects
+  const dormantObjects = await knowledgeDb.query.objects.findMany({
+    where: and(eq(schema.objects.status, 'dormant'), sql`${schema.objects.embedding} IS NOT NULL`),
+  });
 
   let reactivated = 0;
-  for (const r of dormantResults) {
-    if ((r.similarity ?? 0) >= KNOWLEDGE_CONFIG.REACTIVATION_THRESHOLD) {
+  for (const obj of dormantObjects) {
+    if (obj.supersededBy || !obj.embedding) continue;
+    let storedVec: number[];
+    try {
+      storedVec = Array.isArray(obj.embedding) ? obj.embedding
+        : Array.from(new Float32Array(Buffer.from(obj.embedding as ArrayBuffer).buffer));
+    } catch { continue; }
+
+    const similarity = cosineSimArrays(queryEmbedding, storedVec);
+    if (similarity >= KNOWLEDGE_CONFIG.REACTIVATION_THRESHOLD) {
       await knowledgeDb.update(schema.objects)
         .set({ status: 'active', updatedAt: new Date().toISOString() })
-        .where(eq(schema.objects.id, r.id));
+        .where(eq(schema.objects.id, obj.id));
       reactivated++;
     }
   }

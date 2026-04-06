@@ -368,9 +368,10 @@ export default function SettingsPage() {
     for (const m of allModels) initial[`${m.provider}:${m.id}`] = { status: 'testing' };
     setModelTests(prev => ({ ...prev, ...initial }));
 
-    // Fire all tests in parallel — each resolves independently
+    // Test models 3 at a time to avoid rate limits and cost spikes
     let done = 0;
-    await Promise.all(allModels.map(async (m) => {
+    const queue = [...allModels];
+    const runTest = async (m: typeof allModels[0]) => {
       const key = `${m.provider}:${m.id}`;
       try {
         const res = await fetch('/api/todoist', {
@@ -394,7 +395,19 @@ export default function SettingsPage() {
       }
       done++;
       setTestAllProgress({ done, total: allModels.length });
-    }));
+    };
+    // Concurrency-limited: 3 at a time
+    const CONCURRENCY = 3;
+    const running: Promise<void>[] = [];
+    for (const m of queue) {
+      const p = runTest(m);
+      running.push(p);
+      if (running.length >= CONCURRENCY) {
+        await Promise.race(running);
+        running.splice(running.findIndex(r => r === p), 1);
+      }
+    }
+    await Promise.all(running);
 
     setTestAllRunning(false);
   };
@@ -798,37 +811,11 @@ export default function SettingsPage() {
         <Section icon={Database} title="Data Management" description="Export and manage your data">
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => handleExport('knowledge')}
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <Download className="h-4 w-4" />
-              Export Knowledge Base
-            </button>
-            <button
               onClick={() => handleExport('history')}
               className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <Download className="h-4 w-4" />
               Export Task History
-            </button>
-          </div>
-          <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-              <AlertTriangle className="h-4 w-4" />
-              Danger Zone
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Reset the knowledge base to start fresh. This cannot be undone.
-            </p>
-            <button
-              onClick={() => {
-                if (confirm('Are you sure? This deletes all knowledge entries permanently.')) {
-                  alert('Not implemented yet — safety first!');
-                }
-              }}
-              className="mt-2 rounded-lg border border-destructive/50 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
-            >
-              Reset Knowledge Base
             </button>
           </div>
         </Section>

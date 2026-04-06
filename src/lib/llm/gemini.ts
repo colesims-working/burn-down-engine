@@ -27,7 +27,7 @@ export async function geminiGenerate(opts: {
   const endTime = Date.now();
 
   if (opts.operation) {
-    await trackLLMInteraction({
+    void trackLLMInteraction({
       operation: opts.operation,
       model: modelName,
       input: opts.prompt,

@@ -29,17 +29,18 @@ export function HealthIndicator({ compact = false }: { compact?: boolean }) {
           }),
         });
       }
-      // If 'local', keep local value — push it to Todoist on next sync
-      // In both cases, bump todoistSyncedAt to suppress the conflict
-      await fetch('/api/todoist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update-task',
-          taskId: conflictIssue.taskId,
-          data: {}, // just bumps updatedAt
-        }),
-      });
+      if (choice === 'local' && conflictIssue.conflict) {
+        // Keep local value — push it to Todoist via update-task (which now syncs)
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update-task',
+            taskId: conflictIssue.taskId,
+            data: { [conflictIssue.conflict.field]: conflictIssue.conflict.localValue },
+          }),
+        });
+      }
       setConflictIssue(null);
       await runIntegrityCheck();
     } catch (e) {

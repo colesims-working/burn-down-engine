@@ -2,7 +2,7 @@ import { geminiGenerate, geminiGenerateJSON } from './gemini';
 import { claudeGenerate, claudeGenerateJSON } from './claude';
 import { openaiGenerate, openaiGenerateJSON } from './openai-chat';
 import { openrouterGenerate, openrouterGenerateJSON } from './openrouter';
-import { getAppSettings, getModelConfig, getModelForOperation } from '@/lib/db/settings';
+import { getAppSettings, getModelConfig, getModelForOperation, getDisabledModels } from '@/lib/db/settings';
 import type { ModelAssignment } from '@/lib/db/settings';
 import { isExtractionEligible, buildExtractionPromptBlock, processExtractedKnowledge } from '@/lib/knowledge/extraction';
 
@@ -23,7 +23,36 @@ export type LLMOperation =
 async function resolveModel(operation: LLMOperation): Promise<ModelAssignment> {
   const settings = await getAppSettings();
   const config = getModelConfig(settings);
-  return getModelForOperation(config, operation);
+  const assignment = getModelForOperation(config, operation);
+
+  // Issue 20: Enforce disabled models — fall back to default if assigned model is disabled
+  const disabled = getDisabledModels(settings);
+  const assignedKey = `${assignment.provider}:${assignment.model}`;
+  if (disabled.includes(assignedKey)) {
+    console.warn(`Model ${assignedKey} is disabled, falling back to default for ${operation}`);
+    const defaults = getModelConfig({ ...settings, modelConfig: null });
+    return getModelForOperation(defaults, operation);
+  }
+
+  // Issue 19: Enforce monthly budget — reject if exceeded
+  if (settings.monthlyBudget != null && settings.monthlyBudget > 0) {
+    try {
+      const { db, schema } = await import('@/lib/db/client');
+      const { sql } = await import('drizzle-orm');
+      const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+      const spent = await db.select({ total: sql<number>`COALESCE(SUM(cost_estimate), 0)` })
+        .from(schema.llmInteractions)
+        .where(sql`${schema.llmInteractions.timestamp} >= ${monthStart}`);
+      if ((spent[0]?.total ?? 0) >= settings.monthlyBudget) {
+        throw new Error(`Monthly LLM budget of $${settings.monthlyBudget} exceeded`);
+      }
+    } catch (e) {
+      if ((e as Error).message.includes('budget')) throw e;
+      // DB error — don't block the call
+    }
+  }
+
+  return assignment;
 }
 
 /** Inject current date/time into system prompt so LLMs can handle relative dates */

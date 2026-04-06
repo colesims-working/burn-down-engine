@@ -63,6 +63,7 @@ export default function ClarifyPage() {
   const [processedCount, setProcessedCount] = useState(0);
   const [processingTotal, setProcessingTotal] = useState(0);
   const [processingStartTime, setProcessingStartTime] = useState<number | null>(null);
+  const [batchSize, setBatchSize] = useState(3);
   const [autoApproveThreshold, setAutoApproveThreshold] = useState<number>(0.95);
 
   // Persist clarify progress to localStorage
@@ -326,7 +327,7 @@ export default function ClarifyPage() {
           }));
           setTasks(loadProgress(initial));
 
-          // Pre-warm knowledge context cache in background — makes first clarify instant
+          // Pre-warm knowledge context cache for all loaded tasks
           const taskIds = filtered.map((t: any) => t.id);
           fetch('/api/todoist', {
             method: 'POST',
@@ -373,19 +374,39 @@ export default function ClarifyPage() {
       .filter(({ task }) => task.selected && (task.status === 'pending' || task.status === 'error') && !awaitingIds.has(task.splitFromId || ''));
     setProcessingTotal(toProcess.length);
 
-    // Process in parallel batches of 3 for speed
-    const BATCH_SIZE = 5;
-    for (let b = 0; b < toProcess.length; b += BATCH_SIZE) {
-      const batch = toProcess.slice(b, b + BATCH_SIZE);
+    // Concurrency-limited queue: up to BATCH_SIZE tasks run simultaneously.
+    // New tasks start as soon as any slot frees up (no waiting for full batch).
+    const CONCURRENCY = batchSize;
+    const queue = [...toProcess];
+    let active = 0;
+    let resolve: () => void;
+    const allDone = new Promise<void>(r => { resolve = r; });
+    let completed = 0;
 
-      await Promise.all(batch.map(async ({ task, index }) => {
+    function startNext() {
+      while (active < CONCURRENCY && queue.length > 0) {
+        const item = queue.shift()!;
+        active++;
+        processOne(item).finally(() => {
+          active--;
+          completed++;
+          if (completed === toProcess.length) resolve();
+          else startNext();
+        });
+      }
+    }
+
+    async function processOne({ task, index }: typeof toProcess[0]) {
         setTasks(prev => prev.map((t, idx) =>
           idx === index ? { ...t, status: 'processing', streamText: '' } : t
         ));
 
+        // Abort if clarify takes longer than 45 seconds — frees the slot
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+
         try {
-          // Try fallback (non-streaming) first for parallel speed since streaming
-          // is sequential by nature and blocks the response
+          // Non-streaming for parallel speed
           const res = await fetch('/api/todoist', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -394,7 +415,9 @@ export default function ClarifyPage() {
               taskId: task.id,
               ...(task.noSplit ? { additionalInstructions: 'Do NOT decompose or split this task. Keep it as a single task. Set decompositionNeeded to false and subtasks to [].' } : {}),
             }),
+            signal: controller.signal,
           });
+          clearTimeout(timeout);
 
           if (res.ok) {
             const result = sanitizeResult(await res.json());
@@ -415,13 +438,19 @@ export default function ClarifyPage() {
             // Auto-approve: push to Todoist immediately
             if (autoApprove) {
               try {
-                await fetch('/api/todoist', {
+                const applyRes = await fetch('/api/todoist', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ action: 'apply-clarification', taskId: task.id, clarification: result }),
                 });
+                if (!applyRes.ok) {
+                  // Server error — revert to 'done' so user can retry
+                  setTasks(prev => prev.map((t, idx) =>
+                    idx === index ? { ...t, status: 'done' } : t
+                  ));
+                }
               } catch {
-                // Revert to 'done' so user can manually approve
+                // Network error — revert to 'done' so user can manually approve
                 setTasks(prev => prev.map((t, idx) =>
                   idx === index ? { ...t, status: 'done' } : t
                 ));
@@ -435,12 +464,15 @@ export default function ClarifyPage() {
             ));
           }
         } catch {
+          clearTimeout(timeout);
           setTasks(prev => prev.map((t, idx) =>
             idx === index ? { ...t, status: 'error', streamText: undefined } : t
           ));
         }
-      }));
     }
+
+    startNext();
+    await allDone;
 
     setProcessing(false);
     window.dispatchEvent(new Event('llm-complete'));
@@ -834,14 +866,26 @@ export default function ClarifyPage() {
         description="Transform messy captures into perfect next actions"
         action={
           tasks.length > 0 && !processing ? (
-            <button
-              onClick={processSelected}
-              disabled={selectedCount === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-            >
-              <Sparkles className="h-4 w-4" />
-              Process{selectedCount < pendingTasks.length ? ` Selected (${selectedCount})` : ` All (${selectedCount})`}
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                value={batchSize}
+                onChange={e => setBatchSize(parseInt(e.target.value))}
+                className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs"
+                title="Concurrent LLM calls per batch"
+              >
+                <option value="3">3 at a time</option>
+                <option value="5">5 at a time</option>
+                <option value="10">10 at a time</option>
+              </select>
+              <button
+                onClick={processSelected}
+                disabled={selectedCount === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4" />
+                Process{selectedCount < pendingTasks.length ? ` Selected (${selectedCount})` : ` All (${selectedCount})`}
+              </button>
+            </div>
           ) : processing ? (
             <div className="inline-flex items-center gap-2 text-sm text-muted-foreground" role="status" aria-live="polite">
               <Loader2 className="h-4 w-4 animate-spin" />

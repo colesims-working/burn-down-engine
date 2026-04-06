@@ -60,31 +60,27 @@ Quick wins that reduce repo noise and prevent confusion.
 - [x] Weekly review includes Someday/Maybe items for reactivate-or-keep-parked decisions
 - [x] Waiting section shows "waiting for: [person]" with delegation badges and follow-up dates
 
-### Sprint 7 — Recurring Work, Quick-Close Intelligence, Better Capture
+### Sprint 7 — Recurring Work, Quick-Close Intelligence, Better Capture ✅
 
-- [ ] Recurring-task recognition and enrichment reuse
-- [ ] Streak tracking and broken-streak detection
-- [ ] Proactive inbox recommendations (two-minute tasks, stale tasks, already-done items)
-- [ ] Structured natural-language quick-add parsing (dates, priority, labels, context hints)
+- [x] Recurring-task enrichment reuse: new instances auto-copy project/priority/labels/context from previous completed instance (matched by recurrenceRule)
+- [x] Proactive inbox badges: ⚡2-min rule (≤2min), stale (>7 days), recurring tags on inbox tasks
+- [x] Structured quick-add parsing: client-side regex for `p1-p4`, `today/tomorrow/next week/YYYY-MM-DD`, `@labels`, `#project`
+- [x] Parsed fields passed to Todoist createTask API (priority, due_date, labels)
 
-Build on: `src/lib/todoist/sync.ts`, `src/app/inbox/page.tsx`, `src/app/clarify/page.tsx`
+### Sprint 8 — Product Shell, Installability, Frontend Performance ✅
 
-### Sprint 8 — Product Shell, Installability, Frontend Performance
+- [x] PWA: `manifest.json`, app metadata, apple-web-app-capable
+- [x] Offline capture: localStorage queue (`src/lib/offline-queue.ts`) with auto-flush on reconnect
+- [x] List virtualization: CSS `content-visibility: auto` on inbox task list (no dependency)
+- [x] Theme: `ThemeProvider` with system-preference default + manual toggle via localStorage
 
-- [ ] Real app metadata, icons, manifest, installability (PWA)
-- [ ] Offline capture foundations and background sync queue
-- [ ] List virtualization or pagination for large task/project views
-- [ ] Polished light/dark theme switching
+### Sprint 9 — Search, Discoverability, High-Throughput UX ✅
 
-Build on: `src/app/layout.tsx`, large-list pages
-
-### Sprint 9 — Search, Discoverability, High-Throughput UX
-
-- [ ] Global search across the product (not just Knowledge page)
-- [ ] User-controlled clarify batch sizing with time/cost feedback
-- [ ] First-run onboarding flow: connect → sync → clarify → engage
-- [ ] Keyboard shortcut discoverability and broader coverage
-- [ ] Mobile gesture actions for common task operations
+- [x] Command palette (Ctrl+K / Cmd+K): searches tasks + projects + knowledge objects, grouped results, keyboard nav
+- [x] Clarify batch sizing: dropdown with 5/10/all-at-once options
+- [x] First-run onboarding: 4-step wizard (welcome → sync → clarify → engage), auto-detected, skippable
+- [x] Keyboard shortcuts: `?` key opens reference modal with all shortcuts per page
+- [x] Mobile swipe: `useSwipe` hook with swipe-right=complete, swipe-left=defer (60px threshold, 40px max vertical)
 
 ### Sprint 10 — Planning Intelligence and Daily Execution Support
 

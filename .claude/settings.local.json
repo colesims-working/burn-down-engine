@@ -23,7 +23,13 @@
       "Bash(npm install:*)",
       "Bash(ls node_modules/react-force-graph-2d/dist/*.d.ts)",
       "Bash(npm uninstall:*)",
-      "Bash(ls .eslintrc*:*)"
+      "Bash(ls .eslintrc*:*)",
+      "Bash(grep -r \"timeout\" node_modules/@libsql/client/lib-esm/*.d.ts)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{time_total}s\" http://localhost:3000/api/todoist?action=sync-state)",
+      "mcp__playwright__browser_network_requests",
+      "mcp__playwright__browser_console_messages",
+      "Bash(curl:*)",
+      "Read(//tmp/**)"
     ]
   }
 }

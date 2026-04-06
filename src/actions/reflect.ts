@@ -42,19 +42,21 @@ export async function getDailyReviewData(date?: string) {
     t.priority !== null && t.priority <= 2 && t.status !== 'waiting' && t.status !== 'blocked'
   );
 
-  // Get today's fires
+  // Get today's fires (bounded to the review date)
   const fires = await db.query.taskHistory.findMany({
     where: and(
       eq(schema.taskHistory.action, 'fire_promoted'),
       gte(schema.taskHistory.timestamp, `${reviewDate} 00:00:00`),
+      lte(schema.taskHistory.timestamp, `${reviewDate} 23:59:59`),
     ),
   });
 
-  // Get bumped tasks
+  // Get bumped tasks (bounded to the review date)
   const bumps = await db.query.taskHistory.findMany({
     where: and(
       eq(schema.taskHistory.action, 'bumped'),
       gte(schema.taskHistory.timestamp, `${reviewDate} 00:00:00`),
+      lte(schema.taskHistory.timestamp, `${reviewDate} 23:59:59`),
     ),
   });
 

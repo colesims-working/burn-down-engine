@@ -37,6 +37,8 @@ interface Task {
   definitionOfDone: string | null;
   delegatedTo: string | null;
   followUpDate: string | null;
+  isRecurring: boolean | null;
+  recurrenceRule: string | null;
 }
 
 interface EngageData {
@@ -116,7 +118,7 @@ export default function EngagePage() {
     const allTasks = data ? [...data.fires, ...data.mustDo, ...data.shouldDo, ...data.thisWeek, ...data.backlog, ...data.waiting, ...data.blocked] : [];
     const task = allTasks.find(t => t.id === taskId);
     const snapshot: TaskSnapshot | null = task ? {
-      status: task.status, priority: task.priority, dueDate: null,
+      status: task.status, priority: task.priority, dueDate: task.dueDate ?? null,
       bumpCount: task.bumpCount, labels: task.labels, blockerNote: task.blockerNote,
       completedAt: null, todoistId: null,
     } : null;
@@ -269,7 +271,7 @@ export default function EngagePage() {
         }),
         delegate: () => fetch('/api/todoist', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'block', taskId, blockerNote: 'Delegated — awaiting handoff' }),
+          body: JSON.stringify({ action: 'delegate', taskId, delegatedTo: 'TBD', followUpDate: null }),
         }),
       };
 

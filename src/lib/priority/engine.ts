@@ -175,9 +175,13 @@ export async function buildEngageList(): Promise<{
     t.status === 'completed' && t.completedAt && t.completedAt.startsWith(today)
   );
 
-  // Rank within each tier
-  const mustDoIds = await rankTasksInTier(p1, 1);
-  const shouldDoIds = await rankTasksInTier(p2, 2);
+  // Rank P1 and P2 in parallel (independent tiers, each makes a context + LLM call)
+  const t0 = Date.now();
+  const [mustDoIds, shouldDoIds] = await Promise.all([
+    rankTasksInTier(p1, 1),
+    rankTasksInTier(p2, 2),
+  ]);
+  console.log(`[engage] parallel rank (P1=${p1.length}, P2=${p2.length}): ${Date.now()-t0}ms`);
 
   // Reorder by ranking
   const mustDo = mustDoIds.map(id => p1.find(t => t.id === id)!).filter(Boolean);

@@ -91,6 +91,37 @@ export async function syncInbox(): Promise<schema.Task[]> {
             },
           })
           .returning();
+
+        // Recurring enrichment reuse: if this is a recurring task, copy enrichment
+        // from the most recent completed instance with the same recurrence rule
+        const newTask = result[0];
+        if (tt.due?.is_recurring && tt.due?.string && !newTask.clarifyConfidence) {
+          try {
+            const previousInstance = await db.query.tasks.findFirst({
+              where: and(
+                eq(schema.tasks.recurrenceRule, tt.due.string),
+                eq(schema.tasks.status, 'completed'),
+                sql`${schema.tasks.clarifyConfidence} IS NOT NULL`,
+              ),
+              orderBy: (t, { desc }) => [desc(t.completedAt)],
+            });
+            if (previousInstance) {
+              await db.update(schema.tasks).set({
+                projectId: previousInstance.projectId,
+                priority: previousInstance.priority,
+                labels: previousInstance.labels,
+                timeEstimateMin: previousInstance.timeEstimateMin,
+                energyLevel: previousInstance.energyLevel,
+                contextNotes: previousInstance.contextNotes,
+                definitionOfDone: previousInstance.definitionOfDone,
+                nextAction: previousInstance.nextAction,
+                clarifyConfidence: previousInstance.clarifyConfidence,
+                status: 'clarified',
+              }).where(eq(schema.tasks.id, newTask.id));
+            }
+          } catch {}
+        }
+
         return result[0];
       }
     }));
@@ -247,6 +278,25 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
         })
         .returning();
       synced.push(created[0]);
+    }
+  }
+
+  // Reconcile: local tasks with todoistId that no longer exist in Todoist
+  const todoistIds = new Set(allTasks.map(tt => tt.id));
+  const localWithTodoist = await db.query.tasks.findMany({
+    where: and(
+      sql`${schema.tasks.todoistId} IS NOT NULL`,
+      ne(schema.tasks.status, 'completed'),
+      ne(schema.tasks.status, 'killed'),
+    ),
+  });
+  const now = new Date().toISOString();
+  for (const local of localWithTodoist) {
+    if (!local.todoistId) continue;
+    if (!todoistIds.has(local.todoistId)) {
+      await db.update(schema.tasks)
+        .set({ status: 'completed', completedAt: now, updatedAt: now })
+        .where(eq(schema.tasks.id, local.id));
     }
   }
 

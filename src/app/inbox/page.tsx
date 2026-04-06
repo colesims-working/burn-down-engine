@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, AlertTriangle, Keyboard, Check, ArrowUpDown, GitMerge, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { queueOfflineCapture, flushOfflineQueue, getOfflineQueue } from '@/lib/offline-queue';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useUndo } from '@/components/providers/trust-provider';
@@ -16,6 +17,8 @@ interface InboxTask {
   createdAt: string;
   duplicateSuspectOf: string | null;
   dupeSimilarity: number | null;
+  timeEstimateMin: number | null;
+  isRecurring: boolean | null;
 }
 
 function DuplicateGroupCard({ group, groupKey, onMerge, onDismiss }: {
@@ -229,11 +232,48 @@ export default function InboxPage() {
     await runDedup();
   };
 
+  // Parse structured quick-add: "buy groceries p2 tomorrow @errands #Personal"
+  function parseQuickAdd(input: string): { content: string; priority?: number; dueDate?: string; labels: string[] } {
+    let content = input;
+    let priority: number | undefined;
+    let dueDate: string | undefined;
+    const labels: string[] = [];
+
+    // Extract priority: p1, p2, p3, p4
+    const pMatch = content.match(/\bp([1-4])\b/i);
+    if (pMatch) { priority = parseInt(pMatch[1]); content = content.replace(pMatch[0], ''); }
+
+    // Extract labels: @label
+    const labelMatches = content.matchAll(/@(\S+)/g);
+    for (const m of labelMatches) { labels.push(m[1]); content = content.replace(m[0], ''); }
+
+    // Extract dates: today, tomorrow, next week, YYYY-MM-DD
+    const today = new Date();
+    if (/\btomorrow\b/i.test(content)) {
+      dueDate = new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
+      content = content.replace(/\btomorrow\b/i, '');
+    } else if (/\btoday\b/i.test(content)) {
+      dueDate = today.toISOString().slice(0, 10);
+      content = content.replace(/\btoday\b/i, '');
+    } else if (/\bnext week\b/i.test(content)) {
+      dueDate = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+      content = content.replace(/\bnext week\b/i, '');
+    } else {
+      const dateMatch = content.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+      if (dateMatch) { dueDate = dateMatch[1]; content = content.replace(dateMatch[0], ''); }
+    }
+
+    // Keep #project in content — Todoist handles it natively in quick-add
+    content = content.replace(/\s+/g, ' ').trim();
+    return { content, priority, dueDate, labels };
+  }
+
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickAddText.trim()) return;
 
-    const text = quickAddText.trim();
+    const parsed = parseQuickAdd(quickAddText.trim());
+    const text = parsed.content || quickAddText.trim();
     // Optimistic: clear input and add placeholder immediately
     setQuickAddText('');
     const tempId = `temp-${Date.now()}`;
@@ -244,13 +284,21 @@ export default function InboxPage() {
       createdAt: new Date().toISOString(),
       duplicateSuspectOf: null,
       dupeSimilarity: null,
+      timeEstimateMin: null,
+      isRecurring: null,
     }, ...prev]);
 
     try {
       const res = await fetch('/api/todoist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'quick-add', content: text }),
+        body: JSON.stringify({
+          action: 'quick-add',
+          content: text,
+          ...(parsed.priority ? { priority: parsed.priority } : {}),
+          ...(parsed.dueDate ? { due_date: parsed.dueDate } : {}),
+          ...(parsed.labels.length > 0 ? { labels: parsed.labels } : {}),
+        }),
       });
       if (res.ok) {
         const created = await res.json();
@@ -262,10 +310,22 @@ export default function InboxPage() {
         setTasks(prev => prev.filter(t => t.id !== tempId));
       }
     } catch (error) {
-      console.error('Quick add failed:', error);
-      setTasks(prev => prev.filter(t => t.id !== tempId));
+      // Network failure — queue for offline capture
+      queueOfflineCapture({ content: text, priority: parsed.priority, dueDate: parsed.dueDate, labels: parsed.labels.length > 0 ? parsed.labels : undefined });
+      toast({ title: 'Saved offline', description: 'Will sync when connection returns.', duration: 3000 });
     }
   };
+
+  // Flush offline queue on page load and when coming back online
+  useEffect(() => {
+    const flush = async () => {
+      const count = await flushOfflineQueue();
+      if (count > 0) { fetchTasks(); toast({ title: `Synced ${count} offline task(s)`, duration: 3000 }); }
+    };
+    flush();
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, [fetchTasks]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -394,21 +454,29 @@ export default function InboxPage() {
   const batchQuickComplete = async () => {
     if (selected.size === 0) return;
     const ids = Array.from(selected);
+    const tasksToComplete = tasks.filter(t => ids.includes(t.id));
     // Optimistically remove all
-    for (const id of ids) {
-      removedIdsRef.current.add(id);
-    }
+    for (const id of ids) removedIdsRef.current.add(id);
     setTasks(prev => prev.filter(t => !ids.includes(t.id)));
     setSelected(new Set());
     window.dispatchEvent(new Event('inbox-changed'));
-    // Fire completions in parallel
-    await Promise.all(ids.map(id =>
+    // Fire completions in parallel, track failures
+    const results = await Promise.allSettled(ids.map(id =>
       fetch('/api/todoist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'complete', taskId: id }),
-      }).catch(() => {})
+      }).then(r => { if (!r.ok) throw new Error('Failed'); return id; })
     ));
+    // Restore failed tasks
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length > 0) {
+      const failedIds = new Set(ids.filter((_, i) => results[i].status === 'rejected'));
+      for (const id of failedIds) removedIdsRef.current.delete(id);
+      const restored = tasksToComplete.filter(t => failedIds.has(t.id));
+      setTasks(prev => [...restored, ...prev]);
+      toast({ title: `${failed.length} task(s) failed to complete`, duration: 4000 });
+    }
     window.dispatchEvent(new Event('task-changed'));
   };
 
@@ -432,6 +500,8 @@ export default function InboxPage() {
           createdAt: merged.createdAt || new Date().toISOString(),
           duplicateSuspectOf: null,
           dupeSimilarity: null,
+          timeEstimateMin: null,
+          isRecurring: null,
         }, ...prev]);
         toast({ title: 'Tasks merged', description: merged.title, duration: 3000 });
         // Re-run dedup so the merged task is checked against remaining similar tasks
@@ -795,7 +865,7 @@ export default function InboxPage() {
           </div>
 
           {/* Task items */}
-          <ul role="list" aria-label="Inbox tasks" className="space-y-1">
+          <ul role="list" aria-label="Inbox tasks" className="space-y-1 virtualized-list">
             {sortedTasks.map((task, i) => (
               <li
                 key={task.id}
@@ -812,7 +882,20 @@ export default function InboxPage() {
                   aria-label={`Select task: ${task.title}`}
                   className="h-5 w-5 min-w-[20px] rounded border-border accent-primary"
                 />
-                <span className="flex-1 text-sm break-words">{task.title}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm break-words">{task.title}</span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {task.timeEstimateMin != null && task.timeEstimateMin <= 2 && (
+                      <span className="rounded-full bg-green-500/15 px-1.5 py-0.5 text-[9px] font-medium text-green-400">⚡ 2-min rule</span>
+                    )}
+                    {new Date(task.createdAt).getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000 && (
+                      <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-medium text-amber-400">stale</span>
+                    )}
+                    {task.isRecurring && (
+                      <span className="rounded-full bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-medium text-purple-400">recurring</span>
+                    )}
+                  </div>
+                </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); quickComplete(task.id); }}
                   aria-label={`Quick done: ${task.title}`}

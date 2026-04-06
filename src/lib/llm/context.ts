@@ -1,6 +1,5 @@
 import { db, schema } from '@/lib/db/client';
 import { eq, like, desc, sql, and, or, ne, inArray } from 'drizzle-orm';
-import { buildKnowledgeContext } from '@/lib/knowledge/retrieval';
 
 type PageType = 'inbox' | 'clarify' | 'organize' | 'engage' | 'reflect';
 
@@ -225,15 +224,17 @@ export async function matchProjects(text: string): Promise<string[]> {
  * Falls back to legacy category-based retrieval if the knowledge DB is unavailable.
  */
 export async function buildContext(input: string, page: PageType): Promise<string> {
-  // Try new knowledge graph pipeline first
+  // Knowledge graph context — cached for 2 minutes in retrieval.ts.
+  // First call runs the full pipeline (may take a few seconds).
+  // All subsequent calls within the cache window return instantly.
   try {
+    const { buildKnowledgeContext } = await import('@/lib/knowledge/retrieval');
     const context = await buildKnowledgeContext(input, page);
     if (context.length > 0) return context;
   } catch (error) {
     console.error('Knowledge graph retrieval failed, falling back to legacy:', error);
   }
 
-  // Legacy fallback
   return buildLegacyContext(input, page);
 }
 

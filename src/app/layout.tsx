@@ -7,13 +7,18 @@ import { MobileTopBar, MobileBottomTabs } from '@/components/nav/mobile-nav';
 import { TrustProvider } from '@/components/providers/trust-provider';
 import { Toaster } from '@/components/shared/toaster';
 import { UndoIndicator } from '@/components/shared/undo-indicator';
-import { PrefetchEngage } from '@/components/shared/prefetch-engage';
+import { ThemeProvider } from '@/components/shared/theme-provider';
+import { CommandPalette } from '@/components/shared/command-palette';
+import { ShortcutsModal } from '@/components/shared/shortcuts-modal';
+import { OnboardingWizard } from '@/components/shared/onboarding-wizard';
 import { LearningIndicator } from '@/components/shared/learning-indicator';
 import { isAuthenticated } from '@/lib/auth/session';
 
 export const metadata: Metadata = {
   title: 'Burn-Down Engine',
   description: 'A daily-driven GTD intelligence layer for Todoist',
+  manifest: '/manifest.json',
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Burn-Down' },
 };
 
 export const viewport: Viewport = {
@@ -30,9 +35,10 @@ export default async function RootLayout({
   const authed = await isAuthenticated();
 
   return (
-    <html lang="en" className="dark">
-      <body suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         {authed ? (
+          <ThemeProvider>
           <TrustProvider>
             <div className="flex h-screen flex-col md:flex-row">
               <Sidebar />
@@ -46,9 +52,12 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <UndoIndicator />
-            <PrefetchEngage />
             <LearningIndicator />
+            <CommandPalette />
+            <ShortcutsModal />
+            <OnboardingWizard />
           </TrustProvider>
+          </ThemeProvider>
         ) : (
           children
         )}
