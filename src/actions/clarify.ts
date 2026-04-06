@@ -47,6 +47,8 @@ interface ClarifyResult {
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
   contextNotes: string;
+  definitionOfDone: string;
+  nonGoals: string;
   relatedPeople: string[];
   relatedLinks: string[];
   decompositionNeeded: boolean;
@@ -144,6 +146,8 @@ export async function applyClarification(
       timeEstimateMin: clarification.timeEstimateMin,
       energyLevel: clarification.energyLevel,
       contextNotes: clarification.contextNotes,
+      definitionOfDone: clarification.definitionOfDone || null,
+      nonGoals: clarification.nonGoals || null,
       relatedPeople: JSON.stringify(clarification.relatedPeople),
       relatedLinks: JSON.stringify(clarification.relatedLinks),
       clarifyConfidence: clarification.confidence,

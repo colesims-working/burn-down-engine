@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Flame, Target, ClipboardList, Pin, Archive, Clock, Zap, Coffee, Leaf } from 'lucide-react';
+import { Flame, Target, ClipboardList, Pin, Archive, Clock, Zap, Coffee, Leaf, Calendar } from 'lucide-react';
 
 // ─── Priority Badge ──────────────────────────────────────────
 
@@ -63,6 +63,35 @@ export function TimeEstimate({ minutes }: { minutes: number | null }) {
     <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground" aria-label={`Estimated time: ${display}`}>
       <Clock className="h-3 w-3" aria-hidden="true" />
       {display}
+    </span>
+  );
+}
+
+// ─── Due Date Badge ─────────────────────────────────────────
+
+export function DueDateBadge({ dueDate }: { dueDate: string | null }) {
+  if (!dueDate) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const threeDaysOut = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const isOverdue = dueDate < today;
+  const isNearDeadline = !isOverdue && dueDate <= threeDaysOut;
+
+  // Format: "Apr 10" or "Overdue: Apr 5"
+  const dateObj = new Date(dueDate + 'T00:00:00');
+  const formatted = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium',
+        isOverdue ? 'border-red-500/30 bg-red-500/10 text-red-400' :
+        isNearDeadline ? 'border-amber-500/30 bg-amber-500/10 text-amber-400' :
+        'border-border text-muted-foreground',
+      )}
+    >
+      <Calendar className="h-3 w-3" />
+      {isOverdue ? `Overdue: ${formatted}` : formatted}
     </span>
   );
 }

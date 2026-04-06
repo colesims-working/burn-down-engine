@@ -39,6 +39,13 @@ When you need to ask, be specific and offer 2-3 concrete options:
 - Bad: "Can you clarify this task?"
 - Good: "Does 'the bayesian thing' refer to the ranking algorithm or the anomaly detection model?"
 
+## Finish Line
+- **definitionOfDone**: A clear, testable statement of what "done" looks like. Start with "This task is done when...". Be specific enough that the user can objectively verify completion.
+  - Good: "This task is done when the resume PDF has been updated with 2026 experience and uploaded to LinkedIn and 3 job boards."
+  - Bad: "This task is done when the resume is updated." (too vague)
+- **nonGoals**: What this task explicitly does NOT include. Prevents scope creep. Leave empty string if not applicable.
+  - Good: "Does not include writing cover letters or reaching out to recruiters."
+
 ## Output Format
 Return a JSON object with these fields:
 {
@@ -53,6 +60,8 @@ Return a JSON object with these fields:
   "timeEstimateMin": 30,
   "energyLevel": "high",
   "contextNotes": "Any enrichment, links, dependencies, decisions",
+  "definitionOfDone": "This task is done when...",
+  "nonGoals": "Does not include...",
   "relatedPeople": ["Alice", "Bob"],
   "relatedLinks": [],
   "decompositionNeeded": false,

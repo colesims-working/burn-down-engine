@@ -390,6 +390,28 @@ export default function InboxPage() {
     }
   };
 
+  // Batch quick-complete: complete all selected tasks
+  const batchQuickComplete = async () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    // Optimistically remove all
+    for (const id of ids) {
+      removedIdsRef.current.add(id);
+    }
+    setTasks(prev => prev.filter(t => !ids.includes(t.id)));
+    setSelected(new Set());
+    window.dispatchEvent(new Event('inbox-changed'));
+    // Fire completions in parallel
+    await Promise.all(ids.map(id =>
+      fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', taskId: id }),
+      }).catch(() => {})
+    ));
+    window.dispatchEvent(new Event('task-changed'));
+  };
+
   // Duplicate management
   const handleMergeDuplicate = async (suspectId: string, originalId: string, mergedTitle?: string) => {
     // Optimistically remove both
@@ -739,14 +761,22 @@ export default function InboxPage() {
                 </button>
               </div>
               {selected.size > 0 && (
-                <a
-                  href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
-                  className="hidden items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:inline-flex"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Clarify Selected ({selected.size})
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </a>
+                <div className="hidden items-center gap-2 sm:flex">
+                  <a
+                    href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Clarify ({selected.size})
+                  </a>
+                  <button
+                    onClick={batchQuickComplete}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-sm font-medium text-green-400 hover:bg-green-500/20"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Done ({selected.size})
+                  </button>
+                </div>
               )}
             </div>
             <div className="hidden text-[10px] text-muted-foreground/40 sm:block">

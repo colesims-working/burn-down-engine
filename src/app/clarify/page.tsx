@@ -21,6 +21,8 @@ interface ClarifyResult {
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
   contextNotes: string;
+  definitionOfDone: string;
+  nonGoals: string;
   relatedPeople: string[];
   relatedLinks: string[];
   decompositionNeeded: boolean;
@@ -125,6 +127,8 @@ export default function ClarifyPage() {
     timeEstimateMin: r.timeEstimateMin || 0,
     energyLevel: r.energyLevel || 'medium',
     contextNotes: r.contextNotes || '',
+    definitionOfDone: r.definitionOfDone || '',
+    nonGoals: r.nonGoals || '',
     relatedPeople: Array.isArray(r.relatedPeople) ? r.relatedPeople : [],
     relatedLinks: Array.isArray(r.relatedLinks) ? r.relatedLinks : [],
     decompositionNeeded: r.decompositionNeeded || false,

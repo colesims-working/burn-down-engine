@@ -27,16 +27,49 @@ export async function assignPriority(task: schema.Task): Promise<number> {
 
 // ─── Intra-Tier Ranking ──────────────────────────────────────
 
+/**
+ * Deterministic pre-sort: overdue → due-today → due-this-week → bumpCount desc.
+ * Applied BEFORE LLM reranking as a stable baseline.
+ */
+function deterministicSort(tasks: schema.Task[]): schema.Task[] {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const weekEnd = format(addDays(new Date(), 7), 'yyyy-MM-dd');
+
+  return [...tasks].sort((a, b) => {
+    // Overdue first
+    const aOverdue = a.dueDate && a.dueDate < today ? 1 : 0;
+    const bOverdue = b.dueDate && b.dueDate < today ? 1 : 0;
+    if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+    // Due today next
+    const aDueToday = a.dueDate === today ? 1 : 0;
+    const bDueToday = b.dueDate === today ? 1 : 0;
+    if (aDueToday !== bDueToday) return bDueToday - aDueToday;
+
+    // Due this week next
+    const aThisWeek = a.dueDate && a.dueDate <= weekEnd ? 1 : 0;
+    const bThisWeek = b.dueDate && b.dueDate <= weekEnd ? 1 : 0;
+    if (aThisWeek !== bThisWeek) return bThisWeek - aThisWeek;
+
+    // Bump count (most bumped = most urgent)
+    return (b.bumpCount || 0) - (a.bumpCount || 0);
+  });
+}
+
 export async function rankTasksInTier(
   taskList: schema.Task[],
   tier: number
 ): Promise<string[]> {
   if (taskList.length <= 1) return taskList.map(t => t.id);
 
+  // Deterministic pre-sort as baseline
+  const preSorted = deterministicSort(taskList);
+  const allIds = new Set(preSorted.map(t => t.id));
+
   const context = await buildContext('', 'engage');
   const currentHour = new Date().getHours();
 
-  const taskSummaries = taskList.map(t => ({
+  const taskSummaries = preSorted.map(t => ({
     id: t.id,
     title: t.title,
     nextAction: t.nextAction,
@@ -55,16 +88,26 @@ export async function rankTasksInTier(
       prompt: `Current time: ${currentHour}:00\nPriority tier: P${tier}\n\nContext:\n${context}\n\nTasks to rank:\n${JSON.stringify(taskSummaries, null, 2)}`,
     });
 
-    return result.rankedTaskIds || taskList.map(t => t.id);
+    const ranked = result.rankedTaskIds || [];
+
+    // Validate: ensure ALL input tasks appear. Append any missing ones at the end.
+    const seen = new Set<string>();
+    const validated: string[] = [];
+    for (const id of ranked) {
+      if (allIds.has(id) && !seen.has(id)) {
+        validated.push(id);
+        seen.add(id);
+      }
+    }
+    // Append any tasks the LLM dropped
+    for (const id of allIds) {
+      if (!seen.has(id)) validated.push(id);
+    }
+
+    return validated;
   } catch {
-    // Fallback: sort by due date, then bump count
-    return taskList
-      .sort((a, b) => {
-        if (a.dueDate && !b.dueDate) return -1;
-        if (!a.dueDate && b.dueDate) return 1;
-        return (b.bumpCount || 0) - (a.bumpCount || 0);
-      })
-      .map(t => t.id);
+    // Fallback: use deterministic sort
+    return preSorted.map(t => t.id);
   }
 }
 
@@ -77,6 +120,8 @@ export async function buildEngageList(): Promise<{
   thisWeek: schema.Task[];
   backlog: schema.Task[];
   waiting: schema.Task[];
+  blocked: schema.Task[];
+  someday: schema.Task[];
   completed: schema.Task[];
 }> {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -121,7 +166,9 @@ export async function buildEngageList(): Promise<{
   const p2 = allTasks.filter(t => t.priority === 2 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
   const p3 = allTasks.filter(t => t.priority === 3 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
   const p4 = allTasks.filter(t => t.priority === 4 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
-  const waiting = allTasks.filter(t => t.status === 'waiting' || t.status === 'blocked');
+  const waiting = allTasks.filter(t => t.status === 'waiting');
+  const blocked = allTasks.filter(t => t.status === 'blocked');
+  const someday = allTasks.filter(t => t.status === 'someday');
 
   // Get today's completions
   const completed = allTasks.filter(t =>
@@ -136,7 +183,7 @@ export async function buildEngageList(): Promise<{
   const mustDo = mustDoIds.map(id => p1.find(t => t.id === id)!).filter(Boolean);
   const shouldDo = shouldDoIds.map(id => p2.find(t => t.id === id)!).filter(Boolean);
 
-  return { fires, mustDo, shouldDo, thisWeek: p3, backlog: p4, waiting, completed };
+  return { fires, mustDo, shouldDo, thisWeek: p3, backlog: p4, waiting, blocked, someday, completed };
 }
 
 // ─── Fire Protocol ───────────────────────────────────────────

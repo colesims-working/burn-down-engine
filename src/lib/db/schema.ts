@@ -68,10 +68,20 @@ export const tasks = sqliteTable('tasks', {
 
   // Status
   status: text('status', {
-    enum: ['inbox', 'clarified', 'organized', 'active', 'waiting', 'blocked', 'deferred', 'completed', 'killed'],
+    enum: ['inbox', 'clarified', 'organized', 'active', 'waiting', 'blocked', 'deferred', 'someday', 'completed', 'killed'],
   }).default('inbox'),
   blockerNote: text('blocker_note'),
   bumpCount: integer('bump_count').default(0),
+
+  // Clarify guardrails
+  definitionOfDone: text('definition_of_done'),
+  nonGoals: text('non_goals'),
+
+  // Delegation
+  delegatedTo: text('delegated_to'),
+  delegatedAt: text('delegated_at'),
+  followUpDate: text('follow_up_date'),
+  followUpCadence: text('follow_up_cadence'),
 
   // Context
   contextNotes: text('context_notes'),

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw, Filter } from 'lucide-react';
-import { PriorityBadge, EnergyBadge, TimeEstimate, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
+import { PriorityBadge, EnergyBadge, TimeEstimate, DueDateBadge, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useUndo, useSyncHealth } from '@/components/providers/trust-provider';
@@ -33,6 +33,10 @@ interface Task {
   status: string | null;
   blockerNote: string | null;
   projectId: string | null;
+  dueDate: string | null;
+  definitionOfDone: string | null;
+  delegatedTo: string | null;
+  followUpDate: string | null;
 }
 
 interface EngageData {
@@ -40,7 +44,10 @@ interface EngageData {
   mustDo: Task[];
   shouldDo: Task[];
   thisWeek: Task[];
+  backlog: Task[];
   waiting: Task[];
+  blocked: Task[];
+  someday: Task[];
   completed: Task[];
 }
 
@@ -96,14 +103,17 @@ export default function EngagePage() {
         mustDo: remove(prev.mustDo),
         shouldDo: remove(prev.shouldDo),
         thisWeek: remove(prev.thisWeek),
+        backlog: remove(prev.backlog),
         waiting: remove(prev.waiting),
+        blocked: remove(prev.blocked),
+        someday: remove(prev.someday),
       };
     });
   }, []);
 
   // Helper: find task and build snapshot from current in-memory data
   const findTaskAndSnapshot = useCallback((taskId: string) => {
-    const allTasks = data ? [...data.fires, ...data.mustDo, ...data.shouldDo, ...data.thisWeek, ...data.waiting] : [];
+    const allTasks = data ? [...data.fires, ...data.mustDo, ...data.shouldDo, ...data.thisWeek, ...data.backlog, ...data.waiting, ...data.blocked] : [];
     const task = allTasks.find(t => t.id === taskId);
     const snapshot: TaskSnapshot | null = task ? {
       status: task.status, priority: task.priority, dueDate: null,
@@ -539,18 +549,49 @@ export default function EngagePage() {
           <TaskSection title="📌 This Week" tasks={filterByContext(data.thisWeek)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
         )}
 
-        {/* Waiting / Blocked */}
+        {/* Backlog (collapsed by default) */}
+        {data.backlog.length > 0 && (
+          <details className="group">
+            <summary className="mb-2 cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted-foreground/50 list-none flex items-center gap-1">
+              📦 Backlog ({data.backlog.length})
+              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+            </summary>
+            <TaskSection title="" tasks={filterByContext(data.backlog)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
+          </details>
+        )}
+
+        {/* Waiting For */}
         {data.waiting.length > 0 && (
           <div>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              ⏳ Waiting / Blocked ({data.waiting.length})
+              ⏳ Waiting For ({data.waiting.length})
             </h3>
             <div className="space-y-1">
               {data.waiting.map(t => (
                 <div key={t.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground">
                   <Clock className="h-3.5 w-3.5" />
                   <span className="flex-1">{t.title}</span>
-                  {t.blockerNote && <span className="text-xs italic">({t.blockerNote})</span>}
+                  {t.blockerNote && <span className="text-xs italic">waiting for: {t.blockerNote}</span>}
+                  {t.delegatedTo && <span className="text-xs text-purple-400">→ {t.delegatedTo}</span>}
+                  {t.followUpDate && <DueDateBadge dueDate={t.followUpDate} />}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Blocked */}
+        {data.blocked.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-destructive/70">
+              🚫 Blocked ({data.blocked.length})
+            </h3>
+            <div className="space-y-1">
+              {data.blocked.map(t => (
+                <div key={t.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground">
+                  <Ban className="h-3.5 w-3.5 text-destructive/60" />
+                  <span className="flex-1">{t.title}</span>
+                  {t.blockerNote && <span className="text-xs italic text-destructive/60">blocked: {t.blockerNote}</span>}
                 </div>
               ))}
             </div>
@@ -776,6 +817,7 @@ function TaskSection({
                   <PriorityBadge priority={task.priority || 4} />
                   <EnergyBadge level={task.energyLevel} />
                   <TimeEstimate minutes={task.timeEstimateMin} />
+                  <DueDateBadge dueDate={task.dueDate} />
                   {(task.bumpCount || 0) >= 2 && (
                     <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400">
                       <RotateCcw className="h-3 w-3" />
@@ -789,6 +831,7 @@ function TaskSection({
                 <PriorityBadge priority={task.priority || 4} />
                 <EnergyBadge level={task.energyLevel} />
                 <TimeEstimate minutes={task.timeEstimateMin} />
+                <DueDateBadge dueDate={task.dueDate} />
                 {(task.bumpCount || 0) >= 2 && (
                   <span className="flex items-center gap-0.5 text-[10px] font-medium text-amber-400">
                     <RotateCcw className="h-3 w-3" />

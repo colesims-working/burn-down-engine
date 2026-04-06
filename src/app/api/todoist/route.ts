@@ -510,7 +510,7 @@ export async function POST(request: NextRequest) {
   const { action } = body;
 
   // Validate required fields for task-mutation actions
-  const taskIdRequired = ['complete', 'defer', 'block', 'kill', 'kill-todoist', 'wait', 'delete', 'clarify', 'apply-clarification', 'answer-clarify', 'complete-in-clarify', 'update-task', 'dismiss-duplicate', 'enrich-legacy'];
+  const taskIdRequired = ['complete', 'defer', 'block', 'kill', 'kill-todoist', 'wait', 'delete', 'clarify', 'apply-clarification', 'answer-clarify', 'complete-in-clarify', 'update-task', 'dismiss-duplicate', 'enrich-legacy', 'someday', 'delegate', 'reactivate'];
   if (taskIdRequired.includes(action) && !body.taskId) {
     return NextResponse.json({ error: 'taskId is required' }, { status: 400 });
   }
@@ -807,6 +807,54 @@ export async function POST(request: NextRequest) {
         const waited = await waitTask(body.taskId, body.waitingFor);
         void writeToExtractionBuffer({ eventType: 'wait', taskId: body.taskId, taskTitle: waited.title, taskContext: { waitingFor: body.waitingFor } }).catch(() => {});
         return NextResponse.json(waited);
+      }
+
+      case 'someday': {
+        const somedayTask = await db.update(schema.tasks)
+          .set({ status: 'someday', updatedAt: new Date().toISOString() })
+          .where(eq(schema.tasks.id, body.taskId))
+          .returning();
+        await db.insert(schema.taskHistory).values({
+          taskId: body.taskId, action: 'deferred',
+          details: JSON.stringify({ reason: 'Moved to Someday/Maybe' }),
+        });
+        return NextResponse.json(somedayTask[0]);
+      }
+
+      case 'delegate': {
+        const taskToDelegate = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        if (!taskToDelegate) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+        const labels: string[] = JSON.parse(taskToDelegate.labels || '[]');
+        if (!labels.includes('waiting-for')) labels.push('waiting-for');
+        if (!labels.includes('delegated')) labels.push('delegated');
+        const delegated = await db.update(schema.tasks)
+          .set({
+            status: 'waiting',
+            blockerNote: `Delegated to ${body.delegatedTo}`,
+            delegatedTo: body.delegatedTo,
+            delegatedAt: new Date().toISOString(),
+            followUpDate: body.followUpDate || null,
+            followUpCadence: body.followUpCadence || null,
+            labels: JSON.stringify(labels),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(schema.tasks.id, body.taskId))
+          .returning();
+        await db.insert(schema.taskHistory).values({
+          taskId: body.taskId, action: 'waiting',
+          details: JSON.stringify({ delegatedTo: body.delegatedTo, followUpDate: body.followUpDate }),
+        });
+        void writeToExtractionBuffer({ eventType: 'wait', taskId: body.taskId, taskTitle: delegated[0].title, taskContext: { delegatedTo: body.delegatedTo } }).catch(() => {});
+        return NextResponse.json(delegated[0]);
+      }
+
+      case 'reactivate': {
+        // Reactivate a someday/deferred task back to active
+        const reactivated = await db.update(schema.tasks)
+          .set({ status: 'active', updatedAt: new Date().toISOString() })
+          .where(eq(schema.tasks.id, body.taskId))
+          .returning();
+        return NextResponse.json(reactivated[0]);
       }
 
       case 'complete-in-clarify': {

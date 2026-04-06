@@ -206,12 +206,21 @@ export async function generateWeeklyReview() {
     ),
   });
 
+  // Include someday/maybe tasks for review
+  const somedayTasks = await db.query.tasks.findMany({
+    where: eq(schema.tasks.status, 'someday'),
+  });
+
   const context = await buildContext('', 'reflect');
+
+  const somedaySection = somedayTasks.length > 0
+    ? `\n\nSomeday/Maybe items for review (${somedayTasks.length}):\n${somedayTasks.map(t => `- ${t.title}`).join('\n')}`
+    : '';
 
   const result = await llmGenerateJSON<any>({
     operation: 'weekly_review',
     system: WEEKLY_REVIEW_PROMPT,
-    prompt: `## Context\n${context}\n\n## Daily Reviews This Week\n${JSON.stringify(dailyReviews, null, 2)}`,
+    prompt: `## Context\n${context}\n\n## Daily Reviews This Week\n${JSON.stringify(dailyReviews, null, 2)}${somedaySection}`,
   });
 
   if (result.knowledgeExtracted) {
