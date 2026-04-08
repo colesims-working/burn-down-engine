@@ -30,7 +30,8 @@ export type LLMOperation =
   | 'weekly_review'
   | 'complex_decomposition'
   | 'priority_recalibration'
-  | 'organize_conversation';
+  | 'organize_conversation'
+  | 'project_assignment_review';
 
 async function resolveModel(operation: LLMOperation): Promise<ModelAssignment> {
   const settings = await getAppSettings();
