@@ -104,10 +104,10 @@ export async function revertTask(
     }
   }
 
-  // Log the undo in task history (using 'unblocked' as the closest enum value for undo operations)
+  // Log the undo accurately in task history
   await db.insert(schema.taskHistory).values({
     taskId,
-    action: 'unblocked',
+    action: 'undone',
     details: JSON.stringify({ type: 'undo', undoneAction: action, restoredTo: snapshot }),
   });
 

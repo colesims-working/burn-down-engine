@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { FolderKanban, AlertTriangle, Archive, Plus, MessageSquare, Loader2, Check, X, ChevronDown, ArrowRight } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
 
 interface Project {
   id: string;
@@ -34,12 +36,13 @@ interface FilingSuggestion {
   suggestedProject: string | null;
   suggestedLabels: string[];
   suggestedPriority: number | null;
+  suggestedNextAction: string | null;
   confidence: number;
   reasoning: string;
 }
 
 export default function OrganizePage() {
-  const [tab, setTab] = useState<'projects' | 'filing'>('projects');
+  const [tab, setTab] = useState<'projects' | 'filing' | 'reassign' | 'merge'>('projects');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [auditing, setAuditing] = useState(false);
@@ -59,6 +62,18 @@ export default function OrganizePage() {
   const [overrides, setOverrides] = useState<Record<string, { projectId?: string }>>({});
   const [expandedFiling, setExpandedFiling] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
+
+  // Reassignment review state
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignments, setReassignments] = useState<{ taskId: string; taskTitle: string; currentProject: string; suggestedProject: string; confidence: number; reasoning: string }[]>([]);
+  const [reassignAccepted, setReassignAccepted] = useState<Set<string>>(new Set());
+  const [reassignDismissed, setReassignDismissed] = useState<Set<string>>(new Set());
+
+  // Merge review state
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeProposals, setMergeProposals] = useState<{ sourceProject: string; targetProject: string; confidence: number; reasoning: string; tasksMoved: number }[]>([]);
+  const [mergeExecuted, setMergeExecuted] = useState<Set<number>>(new Set());
+  const [mergeDismissed, setMergeDismissed] = useState<Set<number>>(new Set());
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -117,17 +132,40 @@ export default function OrganizePage() {
           body: JSON.stringify({ action: 'update-project', projectId: project.id, data: { status: 'paused' } }),
         });
         setProjects(prev => prev.map(p => p.id === project.id ? { ...p, status: 'paused' } : p));
+      } else if (action === 'rename' && project) {
+        // Extract new name from details (e.g. "Rename to X")
+        const newName = details.replace(/^rename\s+to\s+/i, '').trim() || details;
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update-project', projectId: project.id, data: { name: newName } }),
+        });
+        setProjects(prev => prev.map(p => p.id === project.id ? { ...p, name: newName } : p));
+      } else if (action === 'create') {
+        // Create a new project with the suggested name
+        const newName = details.trim() || rec.projectNames[0] || 'New Project';
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create-project', name: newName }),
+        });
+        // Refresh projects list
+        const projRes = await fetch('/api/todoist?action=projects');
+        if (projRes.ok) {
+          const data = await projRes.json();
+          setProjects(data.projects || data);
+        }
       } else if (action === 'keep') {
         // Just dismiss the recommendation
       } else {
-        // For complex actions (split, merge, create, move, rename), ask the chat for guidance
+        // Advisory actions (split, merge, move) — get guidance via chat
         setChatMessage(`${action}: ${details} (for ${rec.projectNames.join(', ')})`);
         const res = await fetch('/api/todoist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'organize-chat',
-            message: `I want to "${action}" for project(s): ${rec.projectNames.join(', ')}. Details: ${details}. What specific steps should I take?`,
+            message: `I want to "${action}" for project(s): ${rec.projectNames.join(', ')}. Details: ${details}. Give me specific step-by-step instructions I can follow.`,
           }),
         });
         if (res.ok) {
@@ -180,14 +218,23 @@ export default function OrganizePage() {
   };
 
   const acceptSuggestion = async (s: FilingSuggestion) => {
+    // Case-insensitive project matching (matches the pattern in clarify.ts)
     const projectId = overrides[s.taskId]?.projectId
-      ?? projects.find(p => p.name === s.suggestedProject)?.id
+      ?? (s.suggestedProject
+        ? projects.find(p => p.name.toLowerCase().trim() === s.suggestedProject!.toLowerCase().trim())?.id
+        : null)
       ?? null;
+
+    // If a project was suggested but couldn't be resolved, surface the failure
+    if (s.suggestedProject && !projectId && s.issues.includes('no_project')) {
+      toast({ title: 'Project not found', description: `Could not find project "${s.suggestedProject}". Skipping project assignment.`, duration: 5000 });
+    }
 
     const updateData: Record<string, any> = {};
     if (projectId) updateData.projectId = projectId;
     if (s.suggestedLabels?.length) updateData.labels = JSON.stringify(s.suggestedLabels);
     if (s.suggestedPriority != null) updateData.priority = s.suggestedPriority;
+    if (s.suggestedNextAction) updateData.nextAction = s.suggestedNextAction;
 
     if (Object.keys(updateData).length > 0) {
       await fetch('/api/todoist', {
@@ -195,16 +242,18 @@ export default function OrganizePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-task', taskId: s.taskId, data: updateData }),
       });
+      setAcceptedIds(prev => new Set(prev).add(s.taskId));
+    } else {
+      // Nothing to update — don't mark as accepted
+      toast({ title: 'No changes', description: `No actionable suggestions for "${s.taskTitle}".`, duration: 4000 });
     }
-    setAcceptedIds(prev => new Set(prev).add(s.taskId));
   };
 
   const acceptAllSuggestions = async () => {
     setAcceptingAll(true);
     const pending = filingSuggestions.filter(s => !acceptedIds.has(s.taskId) && !dismissedIds.has(s.taskId));
-    for (const s of pending) {
-      await acceptSuggestion(s);
-    }
+    // Parallelize instead of serial — was N × 6 sequential HTTP ops
+    await Promise.allSettled(pending.map(s => acceptSuggestion(s)));
     setAcceptingAll(false);
   };
 
@@ -274,9 +323,27 @@ export default function OrganizePage() {
         >
           Filing
         </button>
+        <button
+          onClick={() => setTab('reassign')}
+          className={cn(
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
+            tab === 'reassign' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Reassign
+        </button>
+        <button
+          onClick={() => setTab('merge')}
+          className={cn(
+            'flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-colors sm:py-2',
+            tab === 'merge' ? 'bg-card text-foreground shadow-sm border border-primary/30' : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          Merge
+        </button>
       </div>
 
-      {tab === 'projects' ? (
+      {tab === 'projects' && (
         <div className="space-y-6">
           {/* Project Health */}
           <div className="rounded-xl border border-border bg-card p-4">
@@ -331,7 +398,7 @@ export default function OrganizePage() {
                     )}
                     <div className="space-y-1">
                     {grouped.get(cat)!.map(p => (
-                      <div key={p.id} className="task-card flex flex-wrap items-center gap-2 rounded-lg px-3 py-3 sm:flex-nowrap sm:gap-3 sm:py-2.5">
+                      <Link key={p.id} href={`/organize/${p.id}`} className="block task-card flex flex-wrap items-center gap-2 rounded-lg px-3 py-3 sm:flex-nowrap sm:gap-3 sm:py-2.5 cursor-pointer hover:border-primary/30 transition-colors">
                         {getHealthDot(p)}
                         <span className="flex-1 text-sm font-medium">{p.name}</span>
                         <div className="flex w-full items-center gap-2 pl-6 sm:w-auto sm:pl-0">
@@ -347,7 +414,7 @@ export default function OrganizePage() {
                             );
                           })()}
                         </div>
-                      </div>
+                      </Link>
                     ))}
                     </div>
                   </div>
@@ -468,7 +535,9 @@ export default function OrganizePage() {
             </div>
           </div>
         </div>
-      ) : (
+      )}
+
+      {tab === 'filing' && (
         <div className="space-y-6">
           {/* Filing Queue Header */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -695,6 +764,187 @@ export default function OrganizePage() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Reassign Tab */}
+      {tab === 'reassign' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold">Project Assignment Review</h2>
+                <p className="text-xs text-muted-foreground">AI suggests tasks that may belong in a different project.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setReassignLoading(true);
+                  try {
+                    const res = await fetch('/api/todoist', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'project-assignment-review' }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setReassignments(data.reassignments || []);
+                    }
+                  } catch {} finally { setReassignLoading(false); }
+                }}
+                disabled={reassignLoading}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {reassignLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Review Assignments'}
+              </button>
+            </div>
+
+            {reassignments.length === 0 && !reassignLoading && (
+              <p className="text-sm text-muted-foreground text-center py-6">Click "Review Assignments" to get AI suggestions.</p>
+            )}
+
+            {reassignments.filter(r => !reassignAccepted.has(r.taskId) && !reassignDismissed.has(r.taskId)).map(r => (
+              <div key={r.taskId} className="rounded-lg border border-border p-3 mb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{r.taskTitle}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <span className="text-orange-400">{r.currentProject}</span> → <span className="text-green-400">{r.suggestedProject}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground/70 mt-0.5">{r.reasoning}</div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={async () => {
+                        const targetProject = projects.find(p => p.name.toLowerCase().trim() === r.suggestedProject.toLowerCase().trim());
+                        if (!targetProject) {
+                          toast({ title: 'Project not found', description: `"${r.suggestedProject}" doesn't exist.`, duration: 4000 });
+                          return;
+                        }
+                        await fetch('/api/todoist', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'update-task', taskId: r.taskId, data: { projectId: targetProject.id } }),
+                        });
+                        setReassignAccepted(prev => new Set(prev).add(r.taskId));
+                      }}
+                      className="rounded-md bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setReassignDismissed(prev => new Set(prev).add(r.taskId))}
+                      className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {reassignAccepted.size > 0 && (
+              <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3 mt-2">
+                <span className="text-xs font-medium text-green-400">
+                  ✓ {reassignAccepted.size} task{reassignAccepted.size !== 1 ? 's' : ''} reassigned
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Merge Tab */}
+      {tab === 'merge' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold">Project Merge Review</h2>
+                <p className="text-xs text-muted-foreground">AI identifies overlapping projects that should be combined.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setMergeLoading(true);
+                  try {
+                    const res = await fetch('/api/todoist', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'project-merge-review' }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setMergeProposals(data.mergeProposals || []);
+                    }
+                  } catch {} finally { setMergeLoading(false); }
+                }}
+                disabled={mergeLoading}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {mergeLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Review Merges'}
+              </button>
+            </div>
+
+            {mergeProposals.length === 0 && !mergeLoading && (
+              <p className="text-sm text-muted-foreground text-center py-6">Click "Review Merges" to get AI suggestions.</p>
+            )}
+
+            {mergeProposals.map((p, i) => {
+              if (mergeExecuted.has(i) || mergeDismissed.has(i)) return null;
+              return (
+                <div key={i} className="rounded-lg border border-border p-3 mb-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">
+                        Merge <span className="text-orange-400">{p.sourceProject}</span> into <span className="text-green-400">{p.targetProject}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{p.reasoning}</div>
+                      <div className="text-xs text-muted-foreground/70 mt-0.5">{p.tasksMoved} tasks would be moved</div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button
+                        onClick={async () => {
+                          const source = projects.find(pr => pr.name.toLowerCase().trim() === p.sourceProject.toLowerCase().trim());
+                          const target = projects.find(pr => pr.name.toLowerCase().trim() === p.targetProject.toLowerCase().trim());
+                          if (!source || !target) {
+                            toast({ title: 'Project not found', description: 'Could not resolve project names.', duration: 4000 });
+                            return;
+                          }
+                          const res = await fetch('/api/todoist', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'merge-projects', sourceProjectId: source.id, targetProjectId: target.id }),
+                          });
+                          if (res.ok) {
+                            const result = await res.json();
+                            setMergeExecuted(prev => new Set(prev).add(i));
+                            setProjects(prev => prev.map(pr => pr.id === source.id ? { ...pr, status: 'archived' } : pr));
+                            toast({ title: 'Projects merged', description: `${result.merged} tasks moved to ${p.targetProject}.` });
+                          }
+                        }}
+                        className="rounded-md bg-green-500/10 px-2 py-1 text-xs text-green-400 hover:bg-green-500/20"
+                      >
+                        Merge
+                      </button>
+                      <button
+                        onClick={() => setMergeDismissed(prev => new Set(prev).add(i))}
+                        className="rounded-md bg-secondary px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {mergeExecuted.size > 0 && (
+              <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3 mt-2">
+                <span className="text-xs font-medium text-green-400">
+                  ✓ {mergeExecuted.size} merge{mergeExecuted.size !== 1 ? 's' : ''} completed
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

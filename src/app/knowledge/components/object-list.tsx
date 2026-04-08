@@ -27,16 +27,17 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const TYPES = ['all', 'person', 'project', 'organization', 'concept', 'event'] as const;
-const STATUSES = ['active', 'dormant', 'absorbed', 'deleted'] as const;
+const STATUSES = ['active', 'dormant', 'absorbed'] as const;
 const SORT_OPTIONS = ['name', 'confidence', 'recency'] as const;
 
 interface ObjectListProps {
   objects: KGObject[];
   loading: boolean;
   onSelectObject: (id: string) => void;
+  onStatusFilterChange?: (status: string) => void;
 }
 
-export function ObjectList({ objects, loading, onSelectObject }: ObjectListProps) {
+export function ObjectList({ objects, loading, onSelectObject, onStatusFilterChange }: ObjectListProps) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
   const [subtypeFilter, setSubtypeFilter] = useState('all');
@@ -88,7 +89,7 @@ export function ObjectList({ objects, loading, onSelectObject }: ObjectListProps
         <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
           {TYPES.map(t => <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>)}
         </select>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+        <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); onStatusFilterChange?.(e.target.value); }} className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         {subtypes.length > 2 && (
@@ -112,8 +113,9 @@ export function ObjectList({ objects, loading, onSelectObject }: ObjectListProps
       ) : (
         <ul className="space-y-1">
           {filtered.map(obj => {
-            const props = JSON.parse(obj.properties || '{}');
-            const detail = props.value || props.contextNotes || props.goal || props.role || '';
+            let props: Record<string, unknown> = {};
+            try { props = JSON.parse(obj.properties || '{}'); } catch {}
+            const detail = String(props.value || props.contextNotes || props.goal || props.role || '');
             return (
               <li
                 key={obj.id}

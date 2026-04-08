@@ -20,6 +20,7 @@ interface ClarifyResult {
   dueDate: string | null;
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
+  urgencyClass: 'deadline' | 'momentum' | 'blocking' | 'routine' | 'flexible';
   contextNotes: string;
   definitionOfDone: string;
   nonGoals: string;
@@ -101,7 +102,9 @@ export default function ClarifyPage() {
       return currentTasks.map(t => {
         const s = savedMap.get(t.id);
         if (s && s.result) {
-          return { ...t, result: sanitizeResult(s.result), status: s.status === 'approved' ? 'approved' : 'done', splitInto: s.splitInto, splitFromId: s.splitFromId, noSplit: s.noSplit };
+          const validStates = ['done', 'approved', 'needs-input', 'rejected', 'completed'] as const;
+          const restoredStatus = validStates.includes(s.status) ? s.status : 'done';
+          return { ...t, result: sanitizeResult(s.result), status: restoredStatus, splitInto: s.splitInto, splitFromId: s.splitFromId, noSplit: s.noSplit };
         }
         return t;
       });
@@ -127,6 +130,7 @@ export default function ClarifyPage() {
     dueDate: r.dueDate || null,
     timeEstimateMin: r.timeEstimateMin || 0,
     energyLevel: r.energyLevel || 'medium',
+    urgencyClass: ['deadline', 'momentum', 'blocking', 'routine', 'flexible'].includes(r.urgencyClass) ? r.urgencyClass : 'flexible',
     contextNotes: r.contextNotes || '',
     definitionOfDone: r.definitionOfDone || '',
     nonGoals: r.nonGoals || '',
@@ -139,107 +143,122 @@ export default function ClarifyPage() {
     knowledgeExtracted: Array.isArray(r.knowledgeExtracted) ? r.knowledgeExtracted : [],
   });
 
-  // Create split tasks from subtask titles — returns new ProcessedTask[] or null if no split needed
+  // Propose split tasks locally — nothing written to Todoist until user confirms
   const autoSplitIfNeeded = async (result: ClarifyResult, taskId: string): Promise<ProcessedTask[] | null> => {
     if (!result.decompositionNeeded || result.subtasks.length === 0) return null;
-    const splitTexts = result.subtasks.map(s => s.title).filter(Boolean);
-    if (splitTexts.length === 0) return null;
+    const validSubs = result.subtasks.filter(s => s.title?.trim());
+    if (validSubs.length === 0) return null;
 
-    // Find original task text to provide context in split titles
     const originalTask = tasks.find(t => t.id === taskId);
     const parentContext = originalTask?.originalText || '';
 
-    const newTasks: ProcessedTask[] = [];
-    for (const text of splitTexts) {
+    // Create local-only proposals (no Todoist write yet)
+    const proposals: ProcessedTask[] = validSubs.map((sub, i) => ({
+      id: `proposal-${taskId}-${i}`,
+      originalText: parentContext ? `${sub.title} [from: ${parentContext}]` : sub.title,
+      // Pre-populate result from the parent's subtask data so nextAction is preserved
+      result: {
+        ...result,
+        title: sub.title,
+        nextAction: sub.nextAction || '',
+        decompositionNeeded: false,
+        subtasks: [],
+        confidence: result.confidence,
+      },
+      status: 'done' as const,
+      expanded: false,
+      selected: true,
+      splitFromId: taskId,
+    }));
+
+    setTasks(prev => {
+      const updated = prev.map(t =>
+        t.id === taskId ? { ...t, status: 'done' as const, result, expanded: false, splitInto: proposals.length } : t
+      );
+      return [...updated, ...proposals];
+    });
+    return proposals;
+  };
+
+  const confirmSplit = async (index: number) => {
+    const task = tasks[index];
+    if (!task) return;
+    const proposals = tasks.filter(t => t.splitFromId === task.id);
+
+    // Create real Todoist tasks in parallel
+    const validProposals = proposals.filter(p => p.result);
+    const results = await Promise.allSettled(validProposals.map(async (proposal) => {
+      const createRes = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'quick-add', content: proposal.result!.title }),
+      });
+      if (!createRes.ok) throw new Error('Create failed');
+      const created = await createRes.json();
+
+      const applyRes = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'apply-clarification', taskId: created.id, clarification: proposal.result }),
+      });
+
+      if (!applyRes.ok) {
+        toast({ title: 'Enrichment failed', description: `"${proposal.result!.title}" was created but not fully clarified.`, duration: 6000 });
+      }
+
+      setTasks(prev => prev.map(t =>
+        t.id === proposal.id ? { ...t, id: created.id, status: 'completed' as const, splitFromId: undefined } : t
+      ));
+      return created.id;
+    }));
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failCount = results.filter(r => r.status === 'rejected').length;
+
+    if (failCount > 0) {
+      toast({ title: `${failCount} subtask(s) failed`, description: 'Original task preserved. Fix and retry.', duration: 6000 });
+    }
+
+    if (successCount === validProposals.length) {
+      // All children created — safe to retire the original
+      setTasks(prev => prev.map((t, idx) =>
+        idx === index ? { ...t, status: 'rejected' as const } : t
+      ));
       try {
-        const res = await fetch('/api/todoist', {
+        await fetch('/api/todoist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'quick-add', content: text }),
+          body: JSON.stringify({ action: 'complete', taskId: task.id }),
         });
-        if (res.ok) {
-          const created = await res.json();
-          newTasks.push({
-            id: created.id,
-            originalText: parentContext ? `${text} [from: ${parentContext}]` : text,
-            result: null,
-            status: 'pending',
-            expanded: false,
-            selected: true,
-            splitFromId: taskId,
-          });
-        }
-      } catch (e) {
-        console.error('Auto-split subtask creation failed:', e);
-        toast({ title: 'Subtask creation failed', description: 'Some subtasks could not be created.', duration: 4000 });
-      }
+      } catch {}
+    } else if (successCount > 0) {
+      // Partial success — leave original as 'done' for manual resolution
+      toast({ title: 'Partial split', description: `${successCount} of ${validProposals.length} created. Original preserved for review.`, duration: 8000 });
     }
-
-    if (newTasks.length > 0) {
-      setTasks(prev => {
-        const updated = prev.map(t =>
-          t.id === taskId ? { ...t, status: 'done' as const, result, expanded: false, splitInto: newTasks.length } : t
-        );
-        return [...updated, ...newTasks];
-      });
-      return newTasks;
-    }
-    return null;
+    // If successCount === 0, original stays untouched
   };
 
-  const confirmSplit = (index: number) => {
+  const keepOriginal = (index: number) => {
     const task = tasks[index];
     if (!task) return;
-    // Confirm: mark original as rejected, remove splitFromId from children so they're independent
-    setTasks(prev => prev.map((t, idx) => {
-      if (idx === index) return { ...t, status: 'rejected' as const };
-      if (t.splitFromId === task.id) return { ...t, splitFromId: undefined };
-      return t;
-    }));
-  };
-
-  const keepOriginal = async (index: number) => {
-    const task = tasks[index];
-    if (!task) return;
-    // Delete all split children and show original with its existing clarification result
-    const children = tasks.filter(t => t.splitFromId === task.id);
+    // Remove local proposals — nothing to delete from Todoist since they were never created
     setTasks(prev =>
       prev.filter(t => t.splitFromId !== task.id).map(t =>
         t.id === task.id ? { ...t, status: 'done' as const, splitInto: undefined } : t
       )
     );
-    // Delete from Todoist in parallel (non-blocking)
-    await Promise.all(children.map(child =>
-      fetch('/api/todoist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', taskId: child.id }),
-      }).catch(e => console.error('Failed to delete split child:', e))
-    ));
   };
 
-  const undoSplit = async (index: number) => {
+  const undoSplit = (index: number) => {
     const task = tasks[index];
     if (!task) return;
-    // Delete all children from Todoist and state, restore original to pending with noSplit flag
-    const children = tasks.filter(t => t.splitFromId === task.id);
+    // Remove local proposals and restore original to pending with noSplit flag
+    // No Todoist cleanup needed — proposals were never persisted
     setTasks(prev =>
       prev.filter(t => t.splitFromId !== task.id).map(t =>
         t.id === task.id ? { ...t, status: 'pending' as const, splitInto: undefined, selected: true, noSplit: true } : t
       )
     );
-    // Delete from Todoist in background
-    for (const child of children) {
-      try {
-        await fetch('/api/todoist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delete', taskId: child.id }),
-        });
-      } catch (e) {
-        console.error('Failed to undo split child:', e);
-      }
-    }
   };
 
   const deleteSplitChild = async (childId: string, parentId: string) => {
@@ -256,15 +275,17 @@ export default function ClarifyPage() {
           : t
       );
     });
-    // Delete from Todoist
-    try {
-      await fetch('/api/todoist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', taskId: childId }),
-      });
-    } catch (e) {
-      console.error('Failed to delete split child:', e);
+    // Only delete from Todoist if it's a real task (not a local proposal)
+    if (!childId.startsWith('proposal-')) {
+      try {
+        await fetch('/api/todoist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', taskId: childId }),
+        });
+      } catch (e) {
+        console.error('Failed to delete split child:', e);
+      }
     }
   };
 
@@ -370,8 +391,8 @@ export default function ClarifyPage() {
 
     const awaitingIds = new Set(tasks.filter(t => t.status === 'done' && t.splitInto).map(t => t.id));
     const toProcess = tasks
-      .map((t, i) => ({ task: t, index: i }))
-      .filter(({ task }) => task.selected && (task.status === 'pending' || task.status === 'error') && !awaitingIds.has(task.splitFromId || ''));
+      .filter(t => t.selected && (t.status === 'pending' || t.status === 'error') && !awaitingIds.has(t.splitFromId || ''))
+      .map(t => ({ task: t, taskId: t.id }));
     setProcessingTotal(toProcess.length);
 
     // Concurrency-limited queue: up to BATCH_SIZE tasks run simultaneously.
@@ -396,14 +417,15 @@ export default function ClarifyPage() {
       }
     }
 
-    async function processOne({ task, index }: typeof toProcess[0]) {
-        setTasks(prev => prev.map((t, idx) =>
-          idx === index ? { ...t, status: 'processing', streamText: '' } : t
+    async function processOne({ task, taskId }: typeof toProcess[0]) {
+        setTasks(prev => prev.map(t =>
+          t.id === taskId ? { ...t, status: 'processing', streamText: '' } : t
         ));
 
-        // Abort if clarify takes longer than 45 seconds — frees the slot
+        // Abort if clarify takes longer than 90 seconds — frees the slot
+        // First call may take 10-15s for knowledge context warm-up; subsequent calls are fast
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 45000);
+        const timeout = setTimeout(() => controller.abort(), 90000);
 
         try {
           // Non-streaming for parallel speed
@@ -431,8 +453,8 @@ export default function ClarifyPage() {
 
             const needsInput = result.confidence < 0.7 && (result.questions?.length ?? 0) > 0;
             const autoApprove = result.confidence >= autoApproveThreshold && !needsInput;
-            setTasks(prev => prev.map((t, idx) =>
-              idx === index ? { ...t, result, status: needsInput ? 'needs-input' : autoApprove ? 'approved' : 'done', expanded: needsInput, streamText: undefined } : t
+            setTasks(prev => prev.map(t =>
+              t.id === taskId ? { ...t, result, status: needsInput ? 'needs-input' : autoApprove ? 'approved' : 'done', expanded: needsInput, streamText: undefined } : t
             ));
 
             // Auto-approve: push to Todoist immediately
@@ -443,31 +465,34 @@ export default function ClarifyPage() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ action: 'apply-clarification', taskId: task.id, clarification: result }),
                 });
-                if (!applyRes.ok) {
-                  // Server error — revert to 'done' so user can retry
-                  setTasks(prev => prev.map((t, idx) =>
-                    idx === index ? { ...t, status: 'done' } : t
+                if (applyRes.ok) {
+                  // Task left inbox — notify other pages
+                  window.dispatchEvent(new Event('inbox-changed'));
+                } else {
+                  setTasks(prev => prev.map(t =>
+                    t.id === taskId ? { ...t, status: 'done' } : t
                   ));
                 }
               } catch {
-                // Network error — revert to 'done' so user can manually approve
-                setTasks(prev => prev.map((t, idx) =>
-                  idx === index ? { ...t, status: 'done' } : t
+                setTasks(prev => prev.map(t =>
+                  t.id === taskId ? { ...t, status: 'done' } : t
                 ));
               }
             }
 
             setProcessedCount(prev => prev + 1);
           } else {
-            setTasks(prev => prev.map((t, idx) =>
-              idx === index ? { ...t, status: 'error', streamText: undefined } : t
+            setTasks(prev => prev.map(t =>
+              t.id === taskId ? { ...t, status: 'error', streamText: undefined } : t
             ));
+            setProcessedCount(prev => prev + 1);
           }
         } catch {
           clearTimeout(timeout);
-          setTasks(prev => prev.map((t, idx) =>
-            idx === index ? { ...t, status: 'error', streamText: undefined } : t
+          setTasks(prev => prev.map(t =>
+            t.id === taskId ? { ...t, status: 'error', streamText: undefined } : t
           ));
+          setProcessedCount(prev => prev + 1);
         }
     }
 
@@ -505,6 +530,9 @@ export default function ClarifyPage() {
         }),
       });
       if (res.ok) {
+        setTasks(prev => prev.map((t, idx) =>
+          idx === index ? { ...t, status: 'completed' as const } : t
+        ));
         pushUndo({
           action: 'clarify_approved',
           taskId: task.id,
@@ -515,6 +543,9 @@ export default function ClarifyPage() {
             completedAt: null, todoistId: null,
           },
         });
+        // Notify other pages (especially Inbox) that this task left the inbox
+        window.dispatchEvent(new Event('task-changed'));
+        window.dispatchEvent(new Event('inbox-changed'));
       } else {
         // Revert on failure
         setTasks(prev => prev.map((t, idx) =>
@@ -546,8 +577,9 @@ export default function ClarifyPage() {
       )
     );
 
-    // Delete split children from Todoist (non-blocking)
+    // Delete split children from Todoist (non-blocking) — skip local proposals
     for (const child of children) {
+      if (child.id.startsWith('proposal-')) continue;
       try {
         await fetch('/api/todoist', {
           method: 'POST',
@@ -748,8 +780,11 @@ export default function ClarifyPage() {
 
       if (res.ok) {
         const result: ClarifyResult = await res.json();
+        // Apply the same needs-input / auto-approve logic as processOne
+        const needsInput = result.confidence < 0.7 && (result.questions?.length ?? 0) > 0;
+        const autoApprove = result.confidence >= autoApproveThreshold && !needsInput;
         setTasks(prev => prev.map((t, idx) =>
-          idx === index ? { ...t, result, status: 'done', answer } : t
+          idx === index ? { ...t, result, status: needsInput ? 'needs-input' : autoApprove ? 'approved' : 'done', answer } : t
         ));
       }
     } catch {
@@ -772,6 +807,9 @@ export default function ClarifyPage() {
   const approvedCount = tasks.filter(t => t.status === 'approved' && t.result).length;
   const rejectedCount = tasks.filter(t => t.status === 'rejected').length;
   const completedCount = tasks.filter(t => t.status === 'completed').length;
+  // Count re-instructing tasks so the total doesn't flicker during processing
+  const reprocessingCount = tasks.filter(t => t.status === 'processing' && t.result).length;
+  const totalProcessedCount = doneCount + approvedCount + completedCount + rejectedCount + reprocessingCount;
 
   // Focus index for keyboard nav through processed tasks
   const [focusedDoneIdx, setFocusedDoneIdx] = useState(0);
@@ -994,12 +1032,12 @@ export default function ClarifyPage() {
           )}
 
           {/* Auto-Processed Section */}
-          {(doneCount > 0 || approvedCount > 0 || splitCount > 0) && (
+          {(doneCount > 0 || approvedCount > 0 || splitCount > 0 || reprocessingCount > 0) && (
             <div className="mb-6">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-green-400">
                   <Check className="h-4 w-4" />
-                  Processed ({doneCount + approvedCount + splitCount})
+                  Processed ({totalProcessedCount + splitCount})
                 </h2>
                 <div className="flex items-center gap-2">
                   <span className="hidden text-[10px] text-muted-foreground/60 sm:block">

@@ -13,6 +13,8 @@ export const PROJECT_AUDIT_PROMPT = `You are the Burn-Down Engine's project advi
 - Keep overallHealth to 2-3 sentences max.
 - Every recommendation MUST list the exact project name(s) in projectNames.
 - Each option MUST have an action from: "archive", "split", "merge", "keep", "create", "move", "rename", "pause"
+- Actions "archive", "pause", "rename", "create", and "keep" execute immediately. "split", "merge", and "move" provide step-by-step guidance.
+- For "rename", put the new name in the details field. For "create", put the project name in details.
 - Limit to the top 5 most impactful recommendations.
 
 Return JSON:
@@ -33,13 +35,17 @@ Return JSON:
   "knowledgeExtracted": []
 }`;
 
-export const FILING_SUGGESTIONS_PROMPT = `You are the Burn-Down Engine's task filing assistant. Review tasks that may be poorly organized and suggest corrections.
+export const FILING_SUGGESTIONS_PROMPT = `You are the Burn-Down Engine's task filing assistant. Review tasks and suggest organizational improvements.
+
+Tasks may be unfiled (no project) or already filed but with issues. Each task includes its currentProject if already assigned.
 
 For each task, check:
 - Is it assigned to the right project? (based on content and context)
 - Does it have appropriate labels?
-- Does it have a clear next action?
+- Does it have a clear, actionable next action starting with a verb?
 - Is the priority reasonable?
+
+Only suggest changes where you're confident. Skip tasks that look fine.
 
 Return JSON:
 {
@@ -51,6 +57,7 @@ Return JSON:
       "suggestedProject": "project name or null",
       "suggestedLabels": ["label1"],
       "suggestedPriority": 2,
+      "suggestedNextAction": "Verb-first next action or null",
       "confidence": 0.85,
       "reasoning": "brief explanation"
     }

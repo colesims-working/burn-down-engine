@@ -7,7 +7,7 @@ import { CLARIFY_SYSTEM_PROMPT } from '@/lib/llm/prompts/clarify';
 import { extractAndStoreKnowledge, processInlineKnowledge } from '@/lib/llm/extraction';
 import { embedTask } from '@/lib/embeddings/generate';
 import { pushTaskToTodoist, pushSubtasksToTodoist } from '@/lib/todoist/sync';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 // ─── Context Cache ──────────────────────────────────────────
@@ -82,8 +82,17 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
   if (!task) throw new Error('Task not found');
   const t1 = Date.now();
 
-  const context = await getCachedContext(task.originalText, 'clarify');
+  // Fetch context and full project list in parallel
+  const [context, allProjects] = await Promise.all([
+    getCachedContext(task.originalText, 'clarify'),
+    db.query.projects.findMany({ where: ne(schema.projects.status, 'archived') }),
+  ]);
   const t2 = Date.now();
+
+  // Build project list for the model so it can match existing projects
+  const projectListSection = allProjects.length > 0
+    ? `\n\n## Available Projects (use EXACTLY these names when assigning)\n${allProjects.map(p => `- ${p.name}`).join('\n')}`
+    : '';
 
   const instructionSuffix = additionalInstructions
     ? `\n\n## Additional User Instructions\n${additionalInstructions}`
@@ -100,7 +109,7 @@ export async function clarifyTask(taskId: string, additionalInstructions?: strin
 
   const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
-    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${previousClarification}${instructionSuffix}`,
+    prompt: `## Knowledge Context\n${context}${projectListSection}\n\n## Task to Clarify\n"${task.originalText}"${previousClarification}${instructionSuffix}`,
     operation: 'clarify_task',
   });
   const t3 = Date.now();
@@ -132,22 +141,24 @@ export async function applyClarification(
   if (!task) throw new Error('Task not found');
 
   // ── Step 1: Resolve or create project ──────────────────────
-  // Don't trust the LLM's newProject flag — if the project doesn't exist, create it.
+  // Case-insensitive + trimmed matching to prevent ghost projects from LLM spelling variance
   let projectId: string | null = null;
   let todoistProjectId: string | undefined;
   if (clarification.projectName) {
-    const existingProject = await db.query.projects.findFirst({
-      where: eq(schema.projects.name, clarification.projectName),
-    });
+    const normalizedName = clarification.projectName.trim();
+    const allProjects = await db.query.projects.findMany();
+    const matched = allProjects.find(
+      p => p.name.toLowerCase().trim() === normalizedName.toLowerCase()
+    );
 
-    if (existingProject) {
-      projectId = existingProject.id;
-      todoistProjectId = existingProject.todoistId || undefined;
+    if (matched) {
+      projectId = matched.id;
+      todoistProjectId = matched.todoistId || undefined;
     } else {
-      // Project doesn't exist locally — create it (regardless of newProject flag)
+      // No case-insensitive match — create new project with the LLM's casing
       const created = await db.insert(schema.projects)
         .values({
-          name: clarification.projectName,
+          name: normalizedName,
           status: 'active',
         })
         .returning();
@@ -167,6 +178,7 @@ export async function applyClarification(
       dueDate: clarification.dueDate || null,
       timeEstimateMin: clarification.timeEstimateMin,
       energyLevel: clarification.energyLevel,
+      urgencyClass: clarification.urgencyClass || null,
       contextNotes: clarification.contextNotes,
       definitionOfDone: clarification.definitionOfDone || null,
       nonGoals: clarification.nonGoals || null,
@@ -194,9 +206,12 @@ export async function applyClarification(
   }
 
   // ── Step 4: Todoist confirmed — now promote locally ────────
+  // Someday/maybe items get their own status instead of entering the active pipeline
+  const labels = clarification.labels || [];
+  const isSomeday = labels.includes('someday-maybe') || labels.includes('project-idea');
   const updated = await db.update(schema.tasks)
     .set({
-      status: 'clarified',
+      status: isSomeday ? 'someday' : 'clarified',
       updatedAt: new Date().toISOString(),
     })
     .where(eq(schema.tasks.id, taskId))
@@ -273,22 +288,40 @@ export async function answerClarifyQuestion(taskId: string, answer: string) {
   });
   if (!task) throw new Error('Task not found');
 
-  // Re-clarify with the additional context
-  // Reuse cached context from the original task text (answer doesn't change the relevant knowledge)
-  const context = await getCachedContext(task.originalText, 'clarify');
+  // Build context from task + answer for better semantic retrieval
+  const context = await getCachedContext(`${task.originalText} ${answer}`, 'clarify');
+
+  // Include previous clarification for continuity
+  let previousClarification = '';
+  if (task.llmNotes) {
+    try {
+      const prev = JSON.parse(task.llmNotes);
+      previousClarification = `\n\n## Previous Clarification Result\nBuild on this result — preserve all fields unless the answer changes them.\n\n${JSON.stringify(prev, null, 2)}`;
+    } catch {}
+  }
 
   const result = await llmGenerateJSON<ClarifyResult>({
     system: CLARIFY_SYSTEM_PROMPT,
-    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"\n\n## User's Answer to Previous Questions\n${answer}`,
+    prompt: `## Knowledge Context\n${context}\n\n## Task to Clarify\n"${task.originalText}"${previousClarification}\n\n## User's Answer to Previous Questions\n${answer}`,
     operation: 'clarify_task',
   });
 
-  // Extract knowledge from the answer
-  extractAndStoreKnowledge({
+  // Persist the updated result to the task (same as clarifyTask does)
+  await db.update(schema.tasks)
+    .set({
+      clarifyConfidence: result.confidence,
+      clarifyQuestions: result.questions.length > 0 ? JSON.stringify(result.questions) : null,
+      llmNotes: JSON.stringify(result),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(schema.tasks.id, taskId));
+
+  // Extract knowledge from the answer (fire-and-forget, matches clarifyTask pattern)
+  void extractAndStoreKnowledge({
     input: `Task: ${task.originalText}\nAnswer: ${answer}`,
     output: JSON.stringify(result),
     page: 'clarify',
-  });
+  }).catch(() => {});
 
   return result;
 }
@@ -296,11 +329,13 @@ export async function answerClarifyQuestion(taskId: string, answer: string) {
 export async function batchApproveClarifications(
   approvals: { taskId: string; clarification: ClarifyResult }[]
 ) {
-  const results = [];
-  for (const { taskId, clarification } of approvals) {
-    const result = await applyClarification(taskId, clarification);
-    results.push(result);
-  }
+  // Parallelize approvals (was serial — each hits Todoist)
+  const settled = await Promise.allSettled(
+    approvals.map(({ taskId, clarification }) => applyClarification(taskId, clarification))
+  );
+  const results = settled
+    .filter((r): r is PromiseFulfilledResult<schema.Task> => r.status === 'fulfilled')
+    .map(r => r.value);
   revalidatePath('/inbox');
   revalidatePath('/clarify');
   revalidatePath('/engage');

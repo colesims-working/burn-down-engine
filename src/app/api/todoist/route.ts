@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAuthenticated } from '@/lib/auth/session';
-import { db, schema } from '@/lib/db/client';
+import { db, schema, ensureSchema } from '@/lib/db/client';
 import { eq, ne, and, sql, lte, isNull, isNotNull, inArray, notInArray } from 'drizzle-orm';
 import { syncInbox, syncProjects, syncAllTasks, pushTaskToTodoist, completeTaskInTodoist, killTaskInTodoist, refreshProjectCounts, mapToTodoistPriority } from '@/lib/todoist/sync';
 import { todoist } from '@/lib/todoist/client';
@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  await ensureSchema();
 
   const action = request.nextUrl.searchParams.get('action');
 
@@ -47,6 +48,21 @@ export async function GET(request: NextRequest) {
       case 'inbox-count': {
         const result = await db.select({ count: sql<number>`count(*)` }).from(schema.tasks).where(eq(schema.tasks.status, 'inbox'));
         return NextResponse.json({ count: result[0].count });
+      }
+
+      case 'search-tasks': {
+        // Pure read — no mutations, no LLM calls. For command palette search.
+        const q = request.nextUrl.searchParams.get('q') || '';
+        const searchTasks = q.length > 0
+          ? await db.query.tasks.findMany({
+              where: and(
+                sql`lower(${schema.tasks.title}) LIKE ${'%' + q.toLowerCase() + '%'}`,
+                notInArray(schema.tasks.status, ['completed', 'killed']),
+              ),
+              limit: 20,
+            })
+          : [];
+        return NextResponse.json(searchTasks);
       }
 
       case 'legacy-count': {
@@ -88,7 +104,9 @@ export async function GET(request: NextRequest) {
       }
 
       case 'engage': {
-        const data = await buildEngageList();
+        // Fast path: pure DB read, no LLM, no writes. Returns stored ranking.
+        const { buildEngageListFast } = await import('@/lib/priority/engine');
+        const data = await buildEngageListFast();
         return NextResponse.json(data);
       }
 
@@ -107,6 +125,7 @@ export async function GET(request: NextRequest) {
         if (!projectId) return NextResponse.json({ error: 'projectId required' }, { status: 400 });
         const tasks = await db.query.tasks.findMany({
           where: and(eq(schema.tasks.projectId, projectId), ne(schema.tasks.status, 'killed')),
+          orderBy: (t, { asc }) => [asc(t.projectOrder), asc(t.createdAt)],
         });
         return NextResponse.json(tasks);
       }
@@ -495,8 +514,13 @@ export async function GET(request: NextRequest) {
           checkedAt: now.toISOString(),
         });
         } catch (integrityErr) {
-          console.error('Integrity check failed (returning ok):', (integrityErr as Error).message);
-          return NextResponse.json({ level: 'ok', issues: [], checkedAt: new Date().toISOString() });
+          console.error('Integrity check failed:', (integrityErr as Error).message);
+          return NextResponse.json({
+            level: 'unknown' as IntegrityLevel,
+            issues: [],
+            checkedAt: new Date().toISOString(),
+            error: (integrityErr as Error).message,
+          });
         }
       }
 
@@ -553,6 +577,20 @@ export async function POST(request: NextRequest) {
         const dedupSettings = await getAppSettings();
         const dedupResult = await runBackgroundDedup(dedupSettings.dupeSimilarityThreshold ?? 0.65);
         return NextResponse.json(dedupResult);
+      }
+
+      case 'rerank': {
+        // Background LLM re-ranking of P1/P2 tiers
+        const { rerankEngageTiers } = await import('@/lib/priority/engine');
+        const ranked = await rerankEngageTiers();
+        return NextResponse.json(ranked);
+      }
+
+      case 'resolve-deferred': {
+        // Resolve deferred tasks whose due date has arrived
+        const { resolveDeferred } = await import('@/lib/priority/engine');
+        const resolved = await resolveDeferred();
+        return NextResponse.json({ resolved });
       }
 
       case 'sync-all': {
@@ -616,13 +654,23 @@ export async function POST(request: NextRequest) {
       }
 
       case 'warm-context': {
-        // Warm the knowledge context cache with a single call.
-        // The cache (2 min TTL) serves all subsequent clarify calls.
+        // Warm with up to 3 representative tasks in parallel for real semantic signal.
         try {
           const { buildContext: buildCtx } = await import('@/lib/llm/context');
-          await buildCtx('', 'clarify');
+          const taskIds: string[] = body.taskIds || [];
+          const sample = taskIds.slice(0, 3);
+          if (sample.length > 0) {
+            const sampleTasks = await db.query.tasks.findMany({
+              where: inArray(schema.tasks.id, sample),
+            });
+            await Promise.all(sampleTasks.map(t =>
+              buildCtx(t.originalText || t.title, 'clarify').catch(() => {})
+            ));
+          } else {
+            await buildCtx('', 'clarify');
+          }
         } catch {}
-        return NextResponse.json({ warmed: 1 });
+        return NextResponse.json({ warmed: Math.min(3, (body.taskIds || []).length) });
       }
 
       case 'apply-clarification': {
@@ -789,6 +837,7 @@ export async function POST(request: NextRequest) {
 
       case 'kill': {
         const taskToKill = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        if (!taskToKill) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
         const killed = await db.update(schema.tasks)
           .set({ status: 'killed', updatedAt: new Date().toISOString() })
           .where(eq(schema.tasks.id, body.taskId))
@@ -798,13 +847,15 @@ export async function POST(request: NextRequest) {
           action: 'killed',
           details: JSON.stringify({ killedAt: new Date().toISOString() }),
         });
-        if (!body.deferTodoist && taskToKill) {
+        let killSyncWarning: string | undefined;
+        if (!body.deferTodoist && taskToKill.todoistId) {
           try { await killTaskInTodoist(taskToKill); } catch (e) {
-            console.error('Failed to kill task in Todoist:', e);
+            killSyncWarning = `Failed to kill in Todoist: ${(e as Error).message}`;
+            console.error(killSyncWarning);
           }
         }
-        void bufferExtraction({ eventType: 'kill', taskId: body.taskId, taskTitle: taskToKill?.title ?? killed[0]?.title }).catch(() => {});
-        return NextResponse.json(killed[0]);
+        void bufferExtraction({ eventType: 'kill', taskId: body.taskId, taskTitle: taskToKill.title ?? '' }).catch(() => {});
+        return NextResponse.json({ ...killed[0], syncWarning: killSyncWarning });
       }
 
       case 'kill-todoist': {
@@ -829,6 +880,7 @@ export async function POST(request: NextRequest) {
           .set({ status: 'someday', updatedAt: new Date().toISOString() })
           .where(eq(schema.tasks.id, body.taskId))
           .returning();
+        if (!somedayTask[0]) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
         await db.insert(schema.taskHistory).values({
           taskId: body.taskId, action: 'deferred',
           details: JSON.stringify({ reason: 'Moved to Someday/Maybe' }),
@@ -859,6 +911,16 @@ export async function POST(request: NextRequest) {
           taskId: body.taskId, action: 'waiting',
           details: JSON.stringify({ delegatedTo: body.delegatedTo, followUpDate: body.followUpDate }),
         });
+        // Sync labels + delegation comment to Todoist
+        try {
+          const { syncTaskLabels: syncLabels, addTodoistComment: addComment } = await import('@/lib/todoist/sync');
+          await syncLabels(delegated[0]);
+          if (taskToDelegate.todoistId) {
+            await addComment(taskToDelegate.todoistId, `⏳ **Delegated to:** ${body.delegatedTo}`);
+          }
+        } catch (e) {
+          delegated[0] = { ...delegated[0], syncWarning: `Delegate Todoist sync failed: ${(e as Error).message}` } as any;
+        }
         void bufferExtraction({ eventType: 'wait', taskId: body.taskId, taskTitle: delegated[0].title, taskContext: { delegatedTo: body.delegatedTo } }).catch(() => {});
         return NextResponse.json(delegated[0]);
       }
@@ -869,6 +931,7 @@ export async function POST(request: NextRequest) {
           .set({ status: 'active', updatedAt: new Date().toISOString() })
           .where(eq(schema.tasks.id, body.taskId))
           .returning();
+        if (!reactivated[0]) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
         return NextResponse.json(reactivated[0]);
       }
 
@@ -885,6 +948,10 @@ export async function POST(request: NextRequest) {
       }
 
       case 'update-task': {
+        // Track old projectId for incremental count adjustment
+        const oldTask = await db.query.tasks.findFirst({ where: eq(schema.tasks.id, body.taskId) });
+        const oldProjectId = oldTask?.projectId || null;
+
         // Allowlist fields to prevent mass assignment
         const allowedFields: (keyof typeof schema.tasks.$inferInsert)[] = [
           'title', 'nextAction', 'description', 'projectId', 'priority',
@@ -901,17 +968,140 @@ export async function POST(request: NextRequest) {
           .where(eq(schema.tasks.id, body.taskId))
           .returning();
 
-        // Sync changes to Todoist (best-effort)
         const updatedTask = updated[0];
+        if (!updatedTask) return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+
+        // Adjust project counts if projectId changed
+        const newProjectId = updatedTask.projectId || null;
+        if (oldProjectId !== newProjectId) {
+          const { adjustProjectCounts } = await import('@/lib/todoist/sync');
+          void adjustProjectCounts(oldProjectId, newProjectId).catch(() => {});
+        }
+
+        // Sync changes to Todoist (best-effort, surface warning)
+        let updateSyncWarning: string | undefined;
         if (updatedTask?.todoistId) {
           try { await pushTaskToTodoist(updatedTask); } catch (e) {
-            console.error('Failed to sync update-task to Todoist:', e);
+            updateSyncWarning = `Failed to sync to Todoist: ${(e as Error).message}`;
           }
         }
-        return NextResponse.json(updatedTask);
+        return NextResponse.json({ ...updatedTask, syncWarning: updateSyncWarning });
       }
 
       // ─── Organize ──────────────────────
+
+      case 'reorder-project-tasks': {
+        // Persist manual task ordering within a project
+        const { orderedTaskIds } = body;
+        if (!Array.isArray(orderedTaskIds)) return NextResponse.json({ error: 'orderedTaskIds required' }, { status: 400 });
+        await db.transaction(async (tx) => {
+          for (let i = 0; i < orderedTaskIds.length; i++) {
+            await tx.update(schema.tasks)
+              .set({ projectOrder: i + 1 })
+              .where(eq(schema.tasks.id, orderedTaskIds[i]));
+          }
+        });
+        return NextResponse.json({ reordered: orderedTaskIds.length });
+      }
+
+      case 'merge-projects': {
+        // Merge one project into another: move all tasks, archive the losing project
+        const { sourceProjectId, targetProjectId } = body;
+        if (!sourceProjectId || !targetProjectId) return NextResponse.json({ error: 'sourceProjectId and targetProjectId required' }, { status: 400 });
+        // Move all tasks from source to target
+        const moved = await db.update(schema.tasks)
+          .set({ projectId: targetProjectId, updatedAt: new Date().toISOString() })
+          .where(and(eq(schema.tasks.projectId, sourceProjectId), ne(schema.tasks.status, 'killed')))
+          .returning();
+        // Sync moved tasks to Todoist (best-effort)
+        for (const task of moved) {
+          if (task.todoistId) {
+            try { await pushTaskToTodoist(task); } catch {}
+          }
+        }
+        // Archive the source project
+        const sourceProject = await db.query.projects.findFirst({ where: eq(schema.projects.id, sourceProjectId) });
+        if (sourceProject?.todoistId) {
+          try { await todoist.archiveProject(sourceProject.todoistId); } catch {}
+        }
+        await db.update(schema.projects)
+          .set({ status: 'archived', updatedAt: new Date().toISOString() })
+          .where(eq(schema.projects.id, sourceProjectId));
+        // Adjust counts
+        const { adjustProjectCounts } = await import('@/lib/todoist/sync');
+        for (const _ of moved) {
+          void adjustProjectCounts(sourceProjectId, targetProjectId).catch(() => {});
+        }
+        return NextResponse.json({ merged: moved.length, archivedProject: sourceProjectId });
+      }
+
+      case 'project-assignment-review': {
+        // AI-assisted review of task-project assignments
+        const { buildContext: buildCtxAssign } = await import('@/lib/llm/context');
+        const { llmGenerateJSON: llmJsonAssign } = await import('@/lib/llm/router');
+        const context = await buildCtxAssign('project assignment review', 'organize');
+        const allProjects = await db.query.projects.findMany({ where: ne(schema.projects.status, 'archived') });
+        const activeTasks = await db.query.tasks.findMany({
+          where: and(
+            ne(schema.tasks.status, 'completed'),
+            ne(schema.tasks.status, 'killed'),
+            ne(schema.tasks.status, 'inbox'),
+            sql`${schema.tasks.projectId} IS NOT NULL`,
+          ),
+        });
+        const projectMap = new Map(allProjects.map(p => [p.id, p.name]));
+        const taskSummaries = activeTasks.slice(0, 50).map(t => ({
+          id: t.id, title: t.title, nextAction: t.nextAction,
+          currentProject: projectMap.get(t.projectId || '') || 'Unknown',
+          labels: t.labels, priority: t.priority,
+        }));
+        const result = await llmJsonAssign<any>({
+          operation: 'project_assignment_review',
+          system: `You are a project organization advisor. Review each task and determine if it belongs in its current project or should be moved to a different one.
+
+For each task that should be moved, explain why. Only flag tasks where you're confident the current assignment is wrong.
+
+Return JSON:
+{
+  "reassignments": [
+    { "taskId": "id", "taskTitle": "title", "currentProject": "name", "suggestedProject": "name", "confidence": 0.85, "reasoning": "brief explanation" }
+  ]
+}`,
+          prompt: `## Context\n${context}\n\n## Available Projects\n${allProjects.map(p => `- ${p.name}${p.goal ? ': ' + p.goal : ''}`).join('\n')}\n\n## Tasks to Review\n${JSON.stringify(taskSummaries, null, 2)}`,
+        });
+        return NextResponse.json(result);
+      }
+
+      case 'project-merge-review': {
+        // AI-assisted review of which projects should merge
+        const allProjects = await db.query.projects.findMany({ where: eq(schema.projects.status, 'active') });
+        const allTasks = await db.query.tasks.findMany({
+          where: and(ne(schema.tasks.status, 'completed'), ne(schema.tasks.status, 'killed')),
+        });
+        const projectSummaries = allProjects.map(p => {
+          const tasks = allTasks.filter(t => t.projectId === p.id);
+          return { name: p.name, goal: p.goal, category: p.category, taskCount: tasks.length, sampleTasks: tasks.slice(0, 5).map(t => t.title) };
+        });
+        const { buildContext: buildCtxMerge } = await import('@/lib/llm/context');
+        const { llmGenerateJSON: llmJsonMerge } = await import('@/lib/llm/router');
+        const context = await buildCtxMerge(allProjects.map(p => p.name).join(' | '), 'organize');
+        const result = await llmJsonMerge<any>({
+          operation: 'project_merge_review',
+          system: `You are a project organization advisor. Identify pairs of projects that overlap in scope and should be merged.
+
+For each merge proposal, specify which project should survive (the stronger/more established one) and which should be absorbed. Only propose merges where there is genuine overlap.
+
+Return JSON:
+{
+  "mergeProposals": [
+    { "sourceProject": "project to absorb", "targetProject": "project to keep", "confidence": 0.85, "reasoning": "brief explanation", "tasksMoved": 5 }
+  ]
+}`,
+          prompt: `## Context\n${context}\n\n## Projects\n${JSON.stringify(projectSummaries, null, 2)}`,
+        });
+        return NextResponse.json(result);
+      }
+
       case 'project-audit': {
         const audit = await runProjectAudit();
         return NextResponse.json(audit);
@@ -929,16 +1119,23 @@ export async function POST(request: NextRequest) {
 
       case 'create-project': {
         const todoistProject = await todoist.createProject({ name: body.name });
-        const project = await db.insert(schema.projects)
-          .values({
-            todoistId: todoistProject.id,
-            name: body.name,
-            category: body.category,
-            goal: body.goal,
-            status: 'active',
-            todoistSyncedAt: new Date().toISOString(),
-          })
-          .returning();
+        let project;
+        try {
+          project = await db.insert(schema.projects)
+            .values({
+              todoistId: todoistProject.id,
+              name: body.name,
+              category: body.category,
+              goal: body.goal,
+              status: 'active',
+              todoistSyncedAt: new Date().toISOString(),
+            })
+            .returning();
+        } catch (dbError) {
+          // Clean up Todoist project if local insert fails
+          try { await todoist.deleteProject(todoistProject.id); } catch {}
+          throw dbError;
+        }
         return NextResponse.json(project[0]);
       }
 
@@ -984,13 +1181,10 @@ export async function POST(request: NextRequest) {
 
         if (projToArchive?.todoistId) {
           try {
-            // Todoist REST API doesn't have archive — delete removes it
-            // Use update to rename with [Archived] prefix as a soft signal
-            await todoist.updateProject(projToArchive.todoistId, {
-              name: `[Archived] ${projToArchive.name}`,
-            });
+            // Archive via Todoist Sync API v9
+            await todoist.archiveProject(projToArchive.todoistId);
           } catch (e) {
-            console.error('Failed to push archive to Todoist:', e);
+            console.error('Failed to archive project in Todoist:', e);
           }
         }
 
@@ -1049,20 +1243,22 @@ export async function POST(request: NextRequest) {
 
       // ─── Knowledge Graph CRUD ────────
       case 'kg-update-object': {
-        const { knowledgeDb: kdb, schema: kgs } = await import('@/lib/knowledge/db');
         if (!body.id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-        const updates: any = { updatedAt: new Date().toISOString() };
-        if (body.name !== undefined) updates.name = body.name;
-        if (body.properties !== undefined) updates.properties = typeof body.properties === 'string' ? body.properties : JSON.stringify(body.properties);
-        if (body.confidence !== undefined) updates.confidence = body.confidence;
-        if (body.status !== undefined) updates.status = body.status;
-        if (body.pinned !== undefined) {
-          updates.pinned = body.pinned ? 1 : 0;
-          updates.pinnedAt = body.pinned ? new Date().toISOString() : null;
+        const { updateKnowledgeObject } = await import('@/lib/knowledge/upsert');
+        try {
+          const updated = await updateKnowledgeObject(body.id, {
+            name: body.name,
+            properties: body.properties,
+            confidence: body.confidence,
+            status: body.status,
+            pinned: body.pinned,
+            subtype: body.subtype,
+          });
+          if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+          return NextResponse.json(updated);
+        } catch (e) {
+          return NextResponse.json({ error: (e as Error).message }, { status: 400 });
         }
-        if (body.subtype !== undefined) updates.subtype = body.subtype;
-        const updated = await kdb.update(kgs.objects).set(updates).where(eq(kgs.objects.id, body.id)).returning();
-        return NextResponse.json(updated[0]);
       }
 
       case 'kg-delete-object': {
@@ -1081,13 +1277,13 @@ export async function POST(request: NextRequest) {
         if (!body.id || !body.resolution) return NextResponse.json({ error: 'id and resolution required' }, { status: 400 });
 
         if (body.resolution === 'approved' && body.objectId) {
-          // Direct update on the protected object
           const proposed = body.proposedData ? (typeof body.proposedData === 'string' ? JSON.parse(body.proposedData) : body.proposedData) : {};
-          const updates: any = { updatedAt: new Date().toISOString() };
-          if (proposed.name) updates.name = proposed.name;
-          if (proposed.properties) updates.properties = typeof proposed.properties === 'string' ? proposed.properties : JSON.stringify(proposed.properties);
-          if (proposed.confidence) updates.confidence = proposed.confidence;
-          await kdb.update(kgs.objects).set(updates).where(eq(kgs.objects.id, body.objectId));
+          const { updateKnowledgeObject } = await import('@/lib/knowledge/upsert');
+          await updateKnowledgeObject(body.objectId, {
+            name: proposed.name !== undefined ? proposed.name : undefined,
+            properties: proposed.properties !== undefined ? proposed.properties : undefined,
+            confidence: proposed.confidence !== undefined ? proposed.confidence : undefined,
+          });
         }
 
         await kdb.update(kgs.reviewQueue).set({

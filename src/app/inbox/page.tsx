@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { Inbox, Plus, Mic, MicOff, RefreshCw, ArrowRight, Sparkles, Trash2, AlertTriangle, Keyboard, Check, ArrowUpDown, GitMerge, X } from 'lucide-react';
 import { PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { queueOfflineCapture, flushOfflineQueue, getOfflineQueue } from '@/lib/offline-queue';
@@ -182,7 +183,7 @@ export default function InboxPage() {
               // Merge: keep local-only tasks (temp), exclude removed tasks
               setTasks(prev => {
                 const syncedIds = new Set((data.tasks as InboxTask[]).map((t: InboxTask) => t.id));
-                const localOnly = prev.filter(t => t.id.startsWith('temp-') || !syncedIds.has(t.id));
+                const localOnly = prev.filter(t => t.id.startsWith('temp-'));
                 const synced = (data.tasks as InboxTask[]).filter(
                   (t: InboxTask) => !removedIdsRef.current.has(t.id)
                 );
@@ -210,6 +211,19 @@ export default function InboxPage() {
     const handler = () => fetchTasks();
     window.addEventListener('task-changed', handler);
     return () => window.removeEventListener('task-changed', handler);
+  }, [fetchTasks]);
+
+  // When a task is restored via undo, clear it from the removal filter so it reappears
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const taskId = (e as CustomEvent)?.detail?.taskId;
+      if (taskId) {
+        removedIdsRef.current.delete(taskId);
+        fetchTasks(); // Re-fetch to show the restored task
+      }
+    };
+    window.addEventListener('task-restored', handler);
+    return () => window.removeEventListener('task-restored', handler);
   }, [fetchTasks]);
 
   const handleSync = async () => {
@@ -602,7 +616,9 @@ export default function InboxPage() {
   const sortedTasks = [...normalTasks].sort((a, b) => {
     const da = new Date(a.createdAt).getTime();
     const db = new Date(b.createdAt).getTime();
-    return sortNewestFirst ? db - da : da - db;
+    const timeDiff = sortNewestFirst ? db - da : da - db;
+    // Stable tiebreaker when timestamps match (e.g., temp tasks, same-second creates)
+    return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
   });
   // Microphone cleanup on unmount (BUG-034)
   useEffect(() => {
@@ -832,13 +848,13 @@ export default function InboxPage() {
               </div>
               {selected.size > 0 && (
                 <div className="hidden items-center gap-2 sm:flex">
-                  <a
+                  <Link
                     href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
                   >
                     <Sparkles className="h-3.5 w-3.5" />
                     Clarify ({selected.size})
-                  </a>
+                  </Link>
                   <button
                     onClick={batchQuickComplete}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-1.5 text-sm font-medium text-green-400 hover:bg-green-500/20"
@@ -853,14 +869,14 @@ export default function InboxPage() {
               j/k navigate · space select · a select all
             </div>
             {selected.size > 0 && (
-              <a
+              <Link
                 href={`/clarify?taskIds=${Array.from(selected).join(',')}`}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:hidden"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Clarify Selected ({selected.size})
                 <ArrowRight className="h-3.5 w-3.5" />
-              </a>
+              </Link>
             )}
           </div>
 
@@ -913,14 +929,14 @@ export default function InboxPage() {
 
           {/* Process All */}
           <div className="mt-6 flex justify-center">
-            <a
+            <Link
               href={selected.size > 0 ? `/clarify?taskIds=${Array.from(selected).join(',')}` : '/clarify'}
               className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto sm:py-2.5"
             >
               <Sparkles className="h-4 w-4" />
               {selected.size > 0 ? `Process Selected (${selected.size})` : 'Process All'} → Clarify
               <ArrowRight className="h-4 w-4" />
-            </a>
+            </Link>
           </div>
         </>
       )}

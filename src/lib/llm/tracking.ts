@@ -62,8 +62,8 @@ export async function trackLLMInteraction(data: {
           latencyMs,
         },
       });
-      // Flush to ensure traces are sent before serverless function terminates
-      await langfuse.flushAsync();
+      // Best-effort flush — don't block user-facing operations
+      void langfuse.flushAsync().catch(() => {});
     }
   } catch (error) {
     // Non-blocking error logging

@@ -131,12 +131,9 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(target.deferredTimer);
     }
 
-    // Remove from stack (pure state update, no side effects)
-    setUndoStack(prev => prev.filter(u => u.id !== entryId));
-
-    // Call revert API outside of setState
+    // Call revert API first — only remove from stack on success
     try {
-      await fetch('/api/todoist', {
+      const res = await fetch('/api/todoist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -147,8 +144,15 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
           todoistSynced: target.todoistSynced,
         }),
       });
-      window.dispatchEvent(new Event('task-changed'));
-      window.dispatchEvent(new Event('inbox-changed'));
+      if (res.ok) {
+        setUndoStack(prev => prev.filter(u => u.id !== entryId));
+        // Dispatch with task ID so pages can clear their removal filters
+        window.dispatchEvent(new CustomEvent('task-restored', { detail: { taskId: target.taskId } }));
+        window.dispatchEvent(new Event('task-changed'));
+        window.dispatchEvent(new Event('inbox-changed'));
+      } else {
+        console.error('Undo API returned error:', res.status);
+      }
     } catch (e) {
       console.error('Undo failed:', e);
     }
@@ -258,55 +262,9 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  // Auto-sync on app load + focus
+  // Fetch sync state once on mount (lightweight — no sync trigger, no focus handler)
   useEffect(() => {
     fetchSyncState();
-
-    // Proactively sync inbox on app boot so it's ready when user navigates
-    (async () => {
-      try {
-        const res = await fetch('/api/todoist?action=sync-state');
-        if (res.ok) {
-          const data = await res.json();
-          const lastSync = data.lastInboxSync || data.lastFullSync;
-          if (!lastSync || (Date.now() - new Date(lastSync).getTime()) > 2 * 60 * 1000) {
-            await fetch('/api/todoist', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'sync-inbox' }),
-            });
-            setLastSyncAt(new Date().toISOString());
-            window.dispatchEvent(new Event('inbox-changed'));
-          }
-        }
-      } catch {}
-    })();
-
-    const handleVisibility = async () => {
-      if (document.visibilityState === 'visible') {
-        // Fetch sync state once and check staleness
-        try {
-          const res = await fetch('/api/todoist?action=sync-state');
-          if (res.ok) {
-            const data = await res.json();
-            const lastSync = data.lastInboxSync || data.lastFullSync;
-            setLastSyncAt(lastSync || null);
-            if (!lastSync || (Date.now() - new Date(lastSync).getTime()) > 5 * 60 * 1000) {
-              await fetch('/api/todoist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'sync-inbox' }),
-              });
-              setLastSyncAt(new Date().toISOString());
-              window.dispatchEvent(new Event('inbox-changed'));
-            }
-          }
-        } catch {}
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [fetchSyncState]);
 
   // === Integrity Monitor ===
@@ -319,6 +277,11 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
   const integrityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runIntegrityCheck = useCallback(async () => {
+    // Togglable via Settings — skip if disabled
+    if (typeof window !== 'undefined' && localStorage.getItem('integrity-check-disabled') === '1') {
+      setIntegrity({ level: 'ok', issues: [], checkedAt: new Date().toISOString() });
+      return;
+    }
     setIntegrityLoading(true);
     try {
       const res = await fetch('/api/todoist?action=integrity-check');
@@ -333,21 +296,11 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Run on mount, on focus, and every 5 minutes
+  // Run integrity check on a lazy 15-minute background timer only.
+  // No mount, no focus, no task-changed triggers — integrity is background work.
   useEffect(() => {
-    runIntegrityCheck();
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        runIntegrityCheck();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    integrityIntervalRef.current = setInterval(runIntegrityCheck, 5 * 60 * 1000);
-
+    integrityIntervalRef.current = setInterval(runIntegrityCheck, 15 * 60 * 1000);
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
       if (integrityIntervalRef.current) clearInterval(integrityIntervalRef.current);
     };
   }, [runIntegrityCheck]);
@@ -372,20 +325,7 @@ export function TrustProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Listen for task-changed events to re-check (with cleanup)
-  const integrityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const handler = () => {
-      // Debounce: wait 2s after changes to let deferred syncs complete
-      if (integrityTimeoutRef.current) clearTimeout(integrityTimeoutRef.current);
-      integrityTimeoutRef.current = setTimeout(runIntegrityCheck, 2000);
-    };
-    window.addEventListener('task-changed', handler);
-    return () => {
-      window.removeEventListener('task-changed', handler);
-      if (integrityTimeoutRef.current) clearTimeout(integrityTimeoutRef.current);
-    };
-  }, [runIntegrityCheck]);
+  // Integrity re-check removed from task-changed — runs on 15min timer only.
 
   const value: TrustContextValue = {
     undoStack,

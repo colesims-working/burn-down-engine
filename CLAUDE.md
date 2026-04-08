@@ -26,7 +26,7 @@ Burn-Down Engine is a single-user, AI-assisted GTD system layered on top of Todo
 | LLMs | Gemini, Anthropic, OpenAI (multi-provider, routed via `src/lib/llm/router.ts`) |
 | Voice | OpenAI Whisper |
 | Auth | iron-session + bcrypt |
-| Tests | Vitest (328+ tests across 18 files) |
+| Tests | Vitest (424+ tests across 24 files) |
 | Tracking | Langfuse (LLM calls + embeddings) |
 | Deploy | Vercel |
 
@@ -73,7 +73,7 @@ Ontology-driven GraphRAG system with typed objects, typed links, and brain-inspi
 | `embedding.ts` | OpenRouter embedding (Qwen3-Embedding-8B, instruction-aware, Langfuse-traced) |
 | `aliases.ts` | Canonicalization, dedup key construction, alias resolution |
 | `evidence.ts` | Provenance logging |
-| `upsert.ts` | `upsertKnowledge()` unified write path |
+| `upsert.ts` | `upsertKnowledge()` unified write path + `updateKnowledgeObject()` shared edit helper |
 | `retrieval.ts` | `buildContext()` 4-stage pipeline: global → vector → graph → rank & assemble |
 | `scoring.ts` | Retrieval score + salience computation |
 | `extraction.ts` | Inline micro-extraction, buffer management, flush triggers |
@@ -175,14 +175,56 @@ Client-side union-find clusters flagged tasks into groups of any size. `Duplicat
 
 ## Current State
 
-_Last updated: April 5, 2026_
+_Last updated: April 6, 2026_
 
 - Knowledge graph: Live. 8 tables, ~33 objects (30 migrated + extracted), vector search working at 4096 dims.
 - Extraction: Active on all qualifying LLM calls. Learning indicator shows extractions in UI.
 - Consolidation: Working. First run produced 11 dormant, 2 merges, 2 absorbed.
 - Graph visualization: Live on Knowledge page (react-force-graph-2d).
-- Review queue: Functional, no pending items currently.
+- Review queue: Functional with dedup guard (no duplicate pending reviews per object).
 - Legacy migration: Complete. Old tables preserved as `knowledge_entries_legacy` / `people_legacy`.
+- ISSUES.md Round 3: All 15 issues fixed (4 Critical, 6 High, 5 Medium).
+- Product Reliability Audit: All 11 issues fixed (4 Critical, 6 High, 1 Medium). 398 tests passing.
+  - Clarify decomposition now local-until-confirm (no premature Todoist writes)
+  - Follow-up answer path persists results + applies decision logic
+  - Someday/Maybe is a first-class clarify outcome with proper tier exclusion
+  - Knowledge graph semantic retrieval now active in ranking, audit, and filing
+  - Session restore preserves full state machine
+  - Case-insensitive project matching prevents ghost projects
+  - Ranking LLM receives project names + goals instead of opaque IDs
+  - Filing assistant inspects filed tasks with org smells + wires nextAction
+  - Audit actions: rename/create are real, split/merge/move honestly advisory
+  - rankWithinTier persisted after each ranking pass
+  - Archive path uses Sync API v9 everywhere with response validation
+
+- Reliability Audit: All 19 issues fixed (8 P0, 9 P1, 2 P2). 424 tests passing.
+  - Sync truthfulness: inbox/full sync verify remote task state via `getTask()`, `needs_reconcile` status added
+  - Priority sync: remote Todoist priority changes flow to all update paths
+  - Mutation handlers: `kill` returns `syncWarning`, all handlers return 404 on missing tasks
+  - Fire victim: correctly bumps worst-ranked P2 (was bumping best)
+  - Split confirmation: guards original — only completes when ALL children succeed
+  - Filing: case-insensitive project matching, surfaces errors on unresolved projects
+  - Consolidation scope gating: `active_only` skips dedup + synthesis
+  - Rollback: rewritten links tagged with `sourceContext`, restored on revert
+  - Dedup merges: invariants recomputed via `updateKnowledgeObject()` after transaction
+  - Synthesis: alias, embedding, and evidence attached post-insert
+  - dedupKey: recomputed on subtype/property changes, not just name
+  - Cache key: DJB2 hash prevents long-input collisions
+  - Object cache: `invalidateRetrievalCaches()` wired into write paths
+  - Threshold defaults unified to 0.85 everywhere
+  - Unguarded JSON parse in object-detail fixed
+  - fireCount computed from actual data, undo logs as 'undone'
+- Speed Audit: 15 of 20 issues fixed.
+  - Engage is a pure DB read with background LLM reranking (Issues 1, 6, 20)
+  - TrustProvider slimmed: integrity check on 15min timer only, no mount/focus/task-changed triggers (Issues 2, 17)
+  - Learning indicator accepts event payload, 30s debounce on fallback fetch (Issue 18)
+  - Internal navigation uses Link/router.push (Issue 13)
+  - Command palette caches projects/knowledge on open (Issue 10)
+  - Incremental project counts on write path (Issue 9)
+  - Subtask push parallelized, filing Accept All parallelized, batch approve parallelized (Issues 7, 11, 12)
+  - syncProjects/syncAllTasks pre-fetch into Maps (Issue 8)
+  - Knowledge page lazy-loads dormant/absorbed on filter change (Issue 15)
+  - Stagger animation disabled beyond 8 items (Issue 19)
 
 ### Known Issues / Tech Debt
 
@@ -191,6 +233,8 @@ _Last updated: April 5, 2026_
 - No focused test coverage for the Knowledge page UI components.
 - `src/app/api/todoist/route.ts` is growing large — consider splitting knowledge endpoints into a separate route.
 - Task embedding throughput: parallelized in batches of 10 concurrent API calls. ~200 tasks ≈ 20 batches ≈ 40 seconds.
+- Manual `splitTask` (user-typed splits) still writes to Todoist immediately — acceptable since it's user-initiated, not speculative.
+- **Speed Audit remaining (5 of 20):** Full TaskStore (Issue 3), render-first inbox/clarify (Issues 4, 5), unified API helper migration (Issue 14), Settings lazy-load sections (Issue 16). Todoist Sync API write migration and virtualized lists also deferred.
 
 ---
 

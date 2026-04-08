@@ -6,6 +6,18 @@ import { getAppSettings, getModelConfig, getModelForOperation, getDisabledModels
 import type { ModelAssignment } from '@/lib/db/settings';
 import { isExtractionEligible, buildExtractionPromptBlock, processExtractedKnowledge } from '@/lib/knowledge/extraction';
 
+// Budget mutex — serializes budget checks so concurrent calls can't overspend
+let _budgetLockQueue: (() => void)[] = [];
+let _budgetLocked = false;
+function acquireBudgetLock(): Promise<void> {
+  if (!_budgetLocked) { _budgetLocked = true; return Promise.resolve(); }
+  return new Promise(resolve => _budgetLockQueue.push(resolve));
+}
+function releaseBudgetLock() {
+  if (_budgetLockQueue.length > 0) { _budgetLockQueue.shift()!(); }
+  else { _budgetLocked = false; }
+}
+
 export type LLMOperation =
   | 'clarify_task'
   | 'extract_tasks_from_voice'
@@ -34,8 +46,9 @@ async function resolveModel(operation: LLMOperation): Promise<ModelAssignment> {
     return getModelForOperation(defaults, operation);
   }
 
-  // Issue 19: Enforce monthly budget — reject if exceeded
+  // Enforce monthly budget — serialized to prevent concurrent calls from overspending
   if (settings.monthlyBudget != null && settings.monthlyBudget > 0) {
+    await acquireBudgetLock();
     try {
       const { db, schema } = await import('@/lib/db/client');
       const { sql } = await import('drizzle-orm');
@@ -48,7 +61,8 @@ async function resolveModel(operation: LLMOperation): Promise<ModelAssignment> {
       }
     } catch (e) {
       if ((e as Error).message.includes('budget')) throw e;
-      // DB error — don't block the call
+    } finally {
+      releaseBudgetLock();
     }
   }
 

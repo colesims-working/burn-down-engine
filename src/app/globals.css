@@ -93,6 +93,8 @@
 .stagger-item:nth-child(6) { animation-delay: 250ms; }
 .stagger-item:nth-child(7) { animation-delay: 300ms; }
 .stagger-item:nth-child(8) { animation-delay: 350ms; }
+/* Items beyond 8 render immediately — no stagger animation burst */
+.stagger-item:nth-child(n+9) { animation: none; }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }

@@ -57,6 +57,7 @@ export const tasks = sqliteTable('tasks', {
   projectId: text('project_id').references(() => projects.id),
   priority: integer('priority').default(4),
   rankWithinTier: integer('rank_within_tier'),
+  projectOrder: integer('project_order'), // Manual ordering within a project view
   labels: text('labels').default('[]'),
 
   // Timing
@@ -68,7 +69,7 @@ export const tasks = sqliteTable('tasks', {
 
   // Status
   status: text('status', {
-    enum: ['inbox', 'clarified', 'organized', 'active', 'waiting', 'blocked', 'deferred', 'someday', 'completed', 'killed'],
+    enum: ['inbox', 'clarified', 'organized', 'active', 'waiting', 'blocked', 'deferred', 'someday', 'completed', 'killed', 'needs_reconcile'],
   }).default('inbox'),
   blockerNote: text('blocker_note'),
   bumpCount: integer('bump_count').default(0),
@@ -91,6 +92,11 @@ export const tasks = sqliteTable('tasks', {
   // Decomposition
   parentTaskId: text('parent_task_id'),
   isDecomposed: integer('is_decomposed', { mode: 'boolean' }).default(false),
+
+  // Urgency classification (set during Clarify for deterministic Engage sorting)
+  urgencyClass: text('urgency_class', {
+    enum: ['deadline', 'momentum', 'blocking', 'routine', 'flexible'],
+  }),
 
   // LLM Processing
   clarifyConfidence: real('clarify_confidence'),
@@ -175,7 +181,7 @@ export const taskHistory = sqliteTable('task_history', {
   taskId: text('task_id').notNull().references(() => tasks.id),
   action: text('action', {
     enum: ['created', 'clarified', 'organized', 'prioritized', 'bumped', 'blocked',
-      'unblocked', 'completed', 'killed', 'decomposed', 'fire_promoted', 'deferred', 'reranked', 'waiting'],
+      'unblocked', 'completed', 'killed', 'decomposed', 'fire_promoted', 'deferred', 'reranked', 'waiting', 'undone'],
   }).notNull(),
   details: text('details'),
   timestamp: text('timestamp').default(sql`(datetime('now'))`),
@@ -292,7 +298,7 @@ export const appSettings = sqliteTable('app_settings', {
   // JSON array of "provider:modelId" strings that the admin has disabled
   disabledModels: text('disabled_models'),
   autoApproveThreshold: real('auto_approve_threshold').default(0.8),
-  dupeSimilarityThreshold: real('dupe_similarity_threshold').default(0.92),
+  dupeSimilarityThreshold: real('dupe_similarity_threshold').default(0.85),
   monthlyBudget: real('monthly_budget'), // USD budget limit, null = no limit
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw, Filter } from 'lucide-react';
+import { Zap, Check, ArrowRight, Ban, Flame, ChevronDown, Clock, RotateCcw, Filter, FolderKanban, Loader2 } from 'lucide-react';
 import { PriorityBadge, EnergyBadge, TimeEstimate, DueDateBadge, ProjectBadge, PageHeader, EmptyState } from '@/components/shared/ui-parts';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -64,14 +64,24 @@ export default function EngagePage() {
   const [antiPileUpTask, setAntiPileUpTask] = useState<Task | null>(null);
   const [antiPileUpChoice, setAntiPileUpChoice] = useState<'promote' | 'delegate' | 'kill' | 'schedule' | null>(null);
   const [antiPileUpDate, setAntiPileUpDate] = useState('');
+  const [delegateName, setDelegateName] = useState('');
   const [contextFilter, setContextFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [projects, setProjects] = useState<{ id: string; name: string; category: string | null }[]>([]);
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'work' | 'personal'>(() => {
+    if (typeof window === 'undefined') return 'all';
+    return (localStorage.getItem('engage-scope-filter') as 'all' | 'work' | 'personal') || 'all';
+  });
   const [focusIndex, setFocusIndex] = useState(0);
 
   const { pushUndo, isActionBusy, markBusy } = useUndo();
   const { addSyncFailure } = useSyncHealth();
 
+  const [reranking, setReranking] = useState(false);
+
   const fetchData = useCallback(async () => {
     try {
+      // Fast path: deterministic sort from structured fields. No LLM.
       const res = await fetch('/api/todoist?action=engage');
       if (res.ok) {
         setData(await res.json());
@@ -85,9 +95,46 @@ export default function EngagePage() {
     }
   }, []);
 
+  // Explicit LLM rerank — button-only, never automatic
+  const triggerRerank = useCallback(async () => {
+    if (reranking) return;
+    setReranking(true);
+    try {
+      const res = await fetch('/api/todoist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rerank' }),
+      });
+      if (res.ok) setData(await res.json());
+    } catch {} finally {
+      setReranking(false);
+    }
+  }, [reranking]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Listen for undo/task-changed events to refresh
+  // Load project list for the filter dropdown
+  useEffect(() => {
+    fetch('/api/todoist?action=projects&status=active').then(r => r.ok ? r.json() : []).then(d => {
+      setProjects(Array.isArray(d) ? d.map((p: any) => ({ id: p.id, name: p.name, category: p.category })) : []);
+    }).catch(() => {});
+  }, []);
+
+  // Resolve deferred tasks once on mount (background, non-blocking)
+  useEffect(() => {
+    fetch('/api/todoist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resolve-deferred' }),
+    }).then(async (r) => {
+      if (r.ok) {
+        const { resolved } = await r.json();
+        if (resolved > 0) fetchData(); // Refresh if deferred tasks were resolved
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for task-changed: just re-read from DB (fast path), don't trigger full rebuild
   useEffect(() => {
     const handler = () => fetchData();
     window.addEventListener('task-changed', handler);
@@ -218,6 +265,8 @@ export default function EngagePage() {
       });
 
       if (res.ok && snapshot && task) {
+        const result = await res.json();
+        if (result.syncWarning) addSyncFailure(result.syncWarning);
         pushUndo({ action: 'blocked', taskId, taskTitle: task.title, previousSnapshot: snapshot });
         window.dispatchEvent(new Event('task-changed'));
       } else if (!res.ok) {
@@ -242,7 +291,6 @@ export default function EngagePage() {
         setFireModal(false);
         setFireText('');
         window.dispatchEvent(new Event('task-changed'));
-        await fetchData();
       } else {
         toast({ title: 'Fire creation failed', description: 'Could not create the urgent task.', duration: 5000 });
       }
@@ -271,11 +319,12 @@ export default function EngagePage() {
         }),
         delegate: () => fetch('/api/todoist', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'delegate', taskId, delegatedTo: 'TBD', followUpDate: null }),
+          body: JSON.stringify({ action: 'delegate', taskId, delegatedTo: delegateName || 'Unspecified', followUpDate: null }),
         }),
       };
 
       if (antiPileUpChoice === 'schedule' && !antiPileUpDate) return;
+      if (antiPileUpChoice === 'delegate' && !delegateName.trim()) return;
       const res = await actions[antiPileUpChoice]();
       if (!res.ok) {
         toast({ title: 'Decision failed', description: 'Could not apply the anti-pile-up decision.', duration: 5000 });
@@ -293,19 +342,43 @@ export default function EngagePage() {
     await fetchData();
   };
 
-  // Context filtering — safe to call even when data is null
-  const filterByContext = useCallback((tasks: Task[]) => {
-    if (contextFilter === 'all') return tasks;
-    return tasks.filter(t => {
-      const labels = t.labels?.toLowerCase() || '';
-      const notes = t.contextNotes?.toLowerCase() || '';
-      const ctx = contextFilter.toLowerCase();
-      return labels.includes(ctx) || notes.includes(ctx) || labels.includes(ctx.replace('@', ''));
-    });
-  }, [contextFilter]);
+  const WORK_CATEGORIES = new Set(['work-primary', 'work-secondary', 'side-project']);
+  const PERSONAL_CATEGORIES = new Set(['personal', 'homelab', 'travel']);
+
+  // Build a project-to-category map for scope filtering
+  const projectCategoryMap = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const p of projects) map.set(p.id, p.category);
+    return map;
+  }, [projects]);
+
+  // Combined scope + project + context filtering
+  const filterTasks = useCallback((tasks: Task[]) => {
+    let result = tasks;
+    // Scope filter (Work/Personal/Both)
+    if (scopeFilter !== 'all') {
+      const allowed = scopeFilter === 'work' ? WORK_CATEGORIES : PERSONAL_CATEGORIES;
+      result = result.filter(t => {
+        const cat = projectCategoryMap.get(t.projectId || '');
+        return cat ? allowed.has(cat) : true; // unfiled tasks pass through
+      });
+    }
+    if (projectFilter !== 'all') {
+      result = result.filter(t => t.projectId === projectFilter);
+    }
+    if (contextFilter !== 'all') {
+      result = result.filter(t => {
+        const labels = t.labels?.toLowerCase() || '';
+        const notes = t.contextNotes?.toLowerCase() || '';
+        const ctx = contextFilter.toLowerCase();
+        return labels.includes(ctx) || notes.includes(ctx) || labels.includes(ctx.replace('@', ''));
+      });
+    }
+    return result;
+  }, [contextFilter, projectFilter, scopeFilter, projectCategoryMap]);
 
   const allActive = data ? [...data.fires, ...data.mustDo, ...data.shouldDo] : [];
-  const filteredActive = filterByContext(allActive);
+  const filteredActive = filterTasks(allActive);
   const nextTasks = useMemo(() => filteredActive.slice(0, 10), [filteredActive]);
 
   // Keyboard navigation — must be before early return to maintain hook order
@@ -385,6 +458,18 @@ export default function EngagePage() {
         }
       />
 
+      {/* Re-rank button */}
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={triggerRerank}
+          disabled={reranking}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 transition-colors disabled:opacity-50"
+        >
+          {reranking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+          {reranking ? 'Re-ranking...' : 'Re-rank with AI'}
+        </button>
+      </div>
+
       {/* Progress */}
       <div className="mb-6 flex items-center gap-4">
         <div className="flex-1">
@@ -398,6 +483,27 @@ export default function EngagePage() {
         <span className="text-sm font-medium text-muted-foreground" title={`${completedCount} of ${completedCount + totalPlanned} tasks completed today`}>
           {completedCount}/{completedCount + totalPlanned} done
         </span>
+      </div>
+
+      {/* Scope Filter (Work / Personal / Both) — persisted to localStorage */}
+      <div className="mb-3 flex items-center gap-2">
+        {(['all', 'work', 'personal'] as const).map(scope => (
+          <button
+            key={scope}
+            onClick={() => {
+              setScopeFilter(scope);
+              localStorage.setItem('engage-scope-filter', scope);
+            }}
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+              scopeFilter === scope
+                ? 'bg-primary/20 text-primary'
+                : 'bg-secondary text-muted-foreground hover:bg-accent',
+            )}
+          >
+            {scope === 'all' ? 'Both' : scope === 'work' ? 'Work' : 'Personal'}
+          </button>
+        ))}
       </div>
 
       {/* Context Filter */}
@@ -425,6 +531,26 @@ export default function EngagePage() {
           )}
         </div>
       </div>
+
+      {/* Project Filter */}
+      {projects.length > 0 && (
+        <div className="mb-4 flex items-center gap-2">
+          <FolderKanban className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <select
+            value={projectFilter}
+            onChange={e => setProjectFilter(e.target.value)}
+            className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs"
+          >
+            <option value="all">All Projects</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {projectFilter !== 'all' && (
+            <button onClick={() => setProjectFilter('all')} className="text-xs text-muted-foreground hover:text-foreground">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Next Up — Top 5 Tasks */}
       {nextTasks.length > 0 && (
@@ -532,23 +658,23 @@ export default function EngagePage() {
       {/* Task Queue */}
       <div className="space-y-6">
         {/* Fires */}
-        {filterByContext(data.fires).length > 0 && (
-          <TaskSection title="🔥 Fires" tasks={filterByContext(data.fires)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterTasks(data.fires).length > 0 && (
+          <TaskSection title="🔥 Fires" tasks={filterTasks(data.fires)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* Must Do */}
-        {filterByContext(data.mustDo).length > 0 && (
-          <TaskSection title="🎯 Must Do" tasks={filterByContext(data.mustDo).slice(nextTask && filterByContext(data.fires).length === 0 ? 1 : 0)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterTasks(data.mustDo).length > 0 && (
+          <TaskSection title="🎯 Must Do" tasks={filterTasks(data.mustDo).slice(nextTask && filterTasks(data.fires).length === 0 ? 1 : 0)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* Should Do */}
-        {filterByContext(data.shouldDo).length > 0 && (
-          <TaskSection title="📋 Should Do" tasks={filterByContext(data.shouldDo)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
+        {filterTasks(data.shouldDo).length > 0 && (
+          <TaskSection title="📋 Should Do" tasks={filterTasks(data.shouldDo)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} />
         )}
 
         {/* This Week */}
-        {filterByContext(data.thisWeek).length > 0 && (
-          <TaskSection title="📌 This Week" tasks={filterByContext(data.thisWeek)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
+        {filterTasks(data.thisWeek).length > 0 && (
+          <TaskSection title="📌 This Week" tasks={filterTasks(data.thisWeek)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
         )}
 
         {/* Backlog (collapsed by default) */}
@@ -558,7 +684,7 @@ export default function EngagePage() {
               📦 Backlog ({data.backlog.length})
               <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
             </summary>
-            <TaskSection title="" tasks={filterByContext(data.backlog)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
+            <TaskSection title="" tasks={filterTasks(data.backlog)} onComplete={handleComplete} onDefer={handleDefer} expandedId={expandedId} onExpand={setExpandedId} muted />
           </details>
         )}
 

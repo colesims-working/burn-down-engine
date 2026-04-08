@@ -47,6 +47,11 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
   }, [objectId]);
 
   const handleSave = async () => {
+    // Validate JSON before sending
+    try { JSON.parse(editProps); } catch {
+      toast({ title: 'Invalid JSON in properties', duration: 4000 });
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch('/api/todoist', {
@@ -63,21 +68,23 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
 
   const handlePin = async () => {
     const isPinned = data.object.pinned === 1;
-    await fetch('/api/todoist', {
+    const res = await fetch('/api/todoist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'kg-update-object', id: objectId, pinned: !isPinned }),
     });
+    if (!res.ok) { toast({ title: 'Pin failed', duration: 3000 }); return; }
     onRefresh();
     setData((d: any) => ({ ...d, object: { ...d.object, pinned: isPinned ? 0 : 1 } }));
   };
 
   const handleReactivate = async () => {
-    await fetch('/api/todoist', {
+    const res = await fetch('/api/todoist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'kg-update-object', id: objectId, status: 'active' }),
     });
+    if (!res.ok) { toast({ title: 'Reactivation failed', duration: 3000 }); return; }
     onRefresh();
     toast({ title: 'Object reactivated', duration: 2000 });
     onBack();
@@ -85,11 +92,12 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
 
   const handleTombstone = async () => {
     if (!confirm('Delete this knowledge object? It will be tombstoned (not permanently removed).')) return;
-    await fetch('/api/todoist', {
+    const res = await fetch('/api/todoist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'kg-delete-object', id: objectId }),
     });
+    if (!res.ok) { toast({ title: 'Delete failed', duration: 3000 }); return; }
     onRefresh();
     toast({ title: 'Object deleted', duration: 2000 });
     onBack();
@@ -99,7 +107,8 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
   if (!data) return <div className="py-8 text-center text-sm text-muted-foreground">Object not found.</div>;
 
   const { object: obj, links, linkedObjects, evidence, absorbedSources } = data;
-  const props = JSON.parse(obj.properties || '{}');
+  let props: Record<string, unknown> = {};
+  try { props = JSON.parse(obj.properties || '{}'); } catch {}
   const linkedMap = new Map<string, any>(linkedObjects.map((o: any) => [o.id, o]));
 
   return (
@@ -197,7 +206,8 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
           <h3 className="text-xs font-semibold text-purple-400 mb-2">Absorbed From ({absorbedSources.length} sources)</h3>
           <div className="space-y-1">
             {absorbedSources.map((src: any) => {
-              const srcProps = JSON.parse(src.properties || '{}');
+              let srcProps: Record<string, unknown> = {};
+              try { srcProps = JSON.parse(src.properties || '{}'); } catch {}
               return (
                 <div key={src.id} className="text-sm">
                   <span className="font-medium">{src.name}</span>

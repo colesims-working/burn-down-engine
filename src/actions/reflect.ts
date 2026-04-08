@@ -10,7 +10,7 @@ import { runConsolidation, shouldAutoConsolidate } from '@/lib/knowledge/consoli
 import { bumpTask, blockTask } from '@/lib/priority/engine';
 import { killTaskInTodoist } from '@/lib/todoist/sync';
 import { format, startOfWeek, subDays } from 'date-fns';
-import { eq, and, gte, lte, ne } from 'drizzle-orm';
+import { eq, and, gte, lte, ne, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
 export async function getDailyReviewData(date?: string) {
@@ -155,7 +155,9 @@ export async function saveDailyReview(data: {
       plannedCount: plannedCount,
       completedCount: completedCount,
       bumpedCount: data.bumpedTasks.length,
-      fireCount: 0,
+      fireCount: await db.query.tasks.findMany({
+        where: and(eq(schema.tasks.priority, 0), sql`${schema.tasks.updatedAt} >= ${data.reviewDate}`),
+      }).then(t => t.length),
       completionRate: plannedCount > 0 ? completedCount / plannedCount : 0,
       completedTasks: JSON.stringify(data.completedTaskIds),
       bumpedTasks: JSON.stringify(data.bumpedTasks),

@@ -12,6 +12,7 @@ import { knowledgeDb, schema } from './db';
 import { eq, and } from 'drizzle-orm';
 import { canonicalize, buildCanonicalName, buildDedupKey, resolveAlias, createAlias } from './aliases';
 import { createEvidence } from './evidence';
+import { invalidateRetrievalCaches } from './retrieval';
 import { generateEmbedding, buildEmbeddingText } from './embedding';
 import { AUTO_PIN_SUBTYPES, KNOWLEDGE_CONFIG } from './config';
 import type {
@@ -68,6 +69,11 @@ export async function upsertKnowledge(
     } catch (error) {
       result.errors.push(`Link "${link.sourceName}" → "${link.targetName}": ${(error as Error).message}`);
     }
+  }
+
+  // Invalidate retrieval caches after any knowledge write
+  if (result.objectsCreated > 0 || result.objectsUpdated > 0 || result.linksCreated > 0) {
+    invalidateRetrievalCaches();
   }
 
   return result;
@@ -185,19 +191,28 @@ async function handleExistingObject(
 ): Promise<string> {
   // Protected sources: manual/seed objects cannot be auto-overwritten
   if (existing.source === 'manual' || existing.source === 'seed') {
-    // Queue for review instead of overwriting
-    await knowledgeDb.insert(schema.reviewQueue).values({
-      objectId: existing.id,
-      reviewType: 'protected_update',
-      proposedData: JSON.stringify({
-        name: obj.name,
-        properties: obj.properties,
-        confidence: obj.confidence,
-        source,
-      }),
-      reason: `Extracted update for ${existing.source}-created object "${existing.name}"`,
+    // Check for existing pending review before creating a new one
+    const existingReview = await knowledgeDb.query.reviewQueue.findFirst({
+      where: and(
+        eq(schema.reviewQueue.objectId, existing.id),
+        eq(schema.reviewQueue.reviewType, 'protected_update'),
+        eq(schema.reviewQueue.status, 'pending'),
+      ),
     });
-    result.reviewQueueItems++;
+    if (!existingReview) {
+      await knowledgeDb.insert(schema.reviewQueue).values({
+        objectId: existing.id,
+        reviewType: 'protected_update',
+        proposedData: JSON.stringify({
+          name: obj.name,
+          properties: obj.properties,
+          confidence: obj.confidence,
+          source,
+        }),
+        reason: `Extracted update for ${existing.source}-created object "${existing.name}"`,
+      });
+      result.reviewQueueItems++;
+    }
     result.objectsSkipped++;
 
     // Still log evidence
@@ -394,4 +409,105 @@ async function resolveObjectId(
     });
     return retry?.id ?? null;
   }
+}
+
+// ─── Shared Object Update (for manual edits + review approvals) ──
+
+/**
+ * Update a knowledge object while preserving all graph invariants:
+ * canonical name, dedup key, aliases, embeddings, evidence.
+ *
+ * Use this instead of bare db.update() for any manual or review-approved edit.
+ */
+export async function updateKnowledgeObject(
+  objectId: string,
+  updates: {
+    name?: string;
+    properties?: Record<string, unknown> | string;
+    confidence?: number;
+    status?: string;
+    pinned?: boolean;
+    subtype?: string;
+  },
+  sourceContext: string = 'review',
+): Promise<typeof schema.objects.$inferSelect | null> {
+  const existing = await knowledgeDb.query.objects.findFirst({
+    where: eq(schema.objects.id, objectId),
+  });
+  if (!existing) return null;
+
+  const now = new Date().toISOString();
+  const dbUpdates: Record<string, unknown> = { updatedAt: now };
+
+  // Name change → recompute canonical name, add alias
+  if (updates.name !== undefined && updates.name !== existing.name) {
+    dbUpdates.name = updates.name;
+    dbUpdates.canonicalName = buildCanonicalName(updates.name);
+    await createAlias(objectId, updates.name);
+  }
+
+  // Properties change → validate JSON
+  if (updates.properties !== undefined) {
+    const propsStr = typeof updates.properties === 'string' ? updates.properties : JSON.stringify(updates.properties);
+    try { JSON.parse(propsStr); } catch { throw new Error('Invalid properties JSON'); }
+    dbUpdates.properties = propsStr;
+  }
+
+  // Recompute dedupKey whenever ANY dedup-relevant field changes (name, subtype, properties)
+  if (updates.name !== undefined || updates.subtype !== undefined || updates.properties !== undefined) {
+    const effectiveName = (updates.name ?? existing.name);
+    const effectiveSubtype = (updates.subtype ?? existing.subtype) || undefined;
+    const effectiveProps = dbUpdates.properties
+      ? JSON.parse(dbUpdates.properties as string)
+      : JSON.parse(existing.properties || '{}');
+    dbUpdates.dedupKey = buildDedupKey(
+      existing.type as ObjectType,
+      { name: effectiveName, subtype: effectiveSubtype, properties: effectiveProps },
+    );
+  }
+
+  if (updates.confidence !== undefined) dbUpdates.confidence = updates.confidence;
+  if (updates.subtype !== undefined) dbUpdates.subtype = updates.subtype;
+  if (updates.status !== undefined) dbUpdates.status = updates.status;
+  if (updates.pinned !== undefined) {
+    dbUpdates.pinned = updates.pinned ? 1 : 0;
+    dbUpdates.pinnedAt = updates.pinned ? now : null;
+  }
+
+  // Regenerate embedding if name or properties changed
+  if (dbUpdates.name || dbUpdates.properties) {
+    try {
+      const props = dbUpdates.properties
+        ? JSON.parse(dbUpdates.properties as string)
+        : JSON.parse(existing.properties || '{}');
+      const embeddingText = buildEmbeddingText({
+        type: existing.type,
+        name: (dbUpdates.name as string) || existing.name,
+        properties: props,
+      });
+      const embedding = await generateEmbedding(embeddingText, { sourceContext });
+      dbUpdates.embedding = embedding;
+      dbUpdates.embeddingModel = KNOWLEDGE_CONFIG.EMBEDDING_MODEL;
+      dbUpdates.embeddingText = embeddingText;
+    } catch {
+      // Embedding failure never blocks the update
+    }
+  }
+
+  const updated = await knowledgeDb.update(schema.objects)
+    .set(dbUpdates)
+    .where(eq(schema.objects.id, objectId))
+    .returning();
+
+  // Log evidence
+  await createEvidence({
+    objectId,
+    sourceContext,
+    evidenceType: 'manual_edit',
+    snippet: `Updated: ${updates.name || existing.name}`,
+    confidence: updates.confidence ?? existing.confidence ?? 0.7,
+  });
+
+  invalidateRetrievalCaches();
+  return updated[0] ?? null;
 }

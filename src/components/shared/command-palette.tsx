@@ -35,15 +35,22 @@ export function CommandPalette() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Cache projects and knowledge when palette opens (fetched once, filtered client-side)
+  const projectsCacheRef = useRef<any[]>([]);
+  const knowledgeCacheRef = useRef<any[]>([]);
+
   useEffect(() => {
     if (open) {
       inputRef.current?.focus();
       setQuery('');
       setResults([]);
+      // Fetch projects and knowledge once on open
+      fetch('/api/todoist?action=projects&status=active').then(r => r.ok ? r.json() : []).then(d => { projectsCacheRef.current = Array.isArray(d) ? d : []; }).catch(() => {});
+      fetch('/api/todoist?action=knowledge&status=active').then(r => r.ok ? r.json() : []).then(d => { knowledgeCacheRef.current = d; }).catch(() => {});
     }
   }, [open]);
 
-  // Search debounced with AbortController to prevent race conditions
+  // Search debounced — only task search hits the server per keystroke
   const searchControllerRef = useRef<AbortController | null>(null);
   useEffect(() => {
     if (!query.trim()) { setResults([]); return; }
@@ -52,50 +59,40 @@ export function CommandPalette() {
   }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchAll = async (q: string) => {
-    // Cancel any in-flight search
     searchControllerRef.current?.abort();
     const controller = new AbortController();
     searchControllerRef.current = controller;
 
     setLoading(true);
-    const results: SearchResult[] = [];
+    const searchResults: SearchResult[] = [];
     const signal = controller.signal;
+    const ql = q.toLowerCase();
 
     try {
-      // Fetch all non-killed tasks (not just inbox), projects (without refresh), and knowledge
-      const [tasksRes, projectsRes, knowledgeRes] = await Promise.all([
-        fetch(`/api/todoist?action=engage`, { signal }).then(r => r.ok ? r.json() : { fires: [], mustDo: [], shouldDo: [], thisWeek: [], backlog: [], waiting: [], blocked: [] }),
-        fetch(`/api/todoist?action=projects&status=active`, { signal }).then(r => r.ok ? r.json() : []),
-        fetch(`/api/todoist?action=knowledge&status=active`, { signal }).then(r => r.ok ? r.json() : []),
-      ]);
-
+      // Only task search hits the server — projects/knowledge are cached
+      const tasksRes = await fetch(`/api/todoist?action=search-tasks&q=${encodeURIComponent(q)}`, { signal }).then(r => r.ok ? r.json() : []);
       if (signal.aborted) return;
-      const ql = q.toLowerCase();
 
-      // Tasks from all engage tiers + inbox
-      const allTasks = [
-        ...tasksRes.fires || [], ...tasksRes.mustDo || [], ...tasksRes.shouldDo || [],
-        ...tasksRes.thisWeek || [], ...tasksRes.backlog || [],
-        ...tasksRes.waiting || [], ...tasksRes.blocked || [],
-      ];
-      for (const t of allTasks) {
-        if (t.title?.toLowerCase().includes(ql)) {
-          results.push({ id: t.id, title: t.title, type: 'task', subtitle: t.status || 'active', href: '/engage' });
+      // Tasks
+      for (const t of tasksRes) {
+        if (t.title) {
+          searchResults.push({ id: t.id, title: t.title, type: 'task', subtitle: t.status || 'active', href: t.status === 'inbox' ? '/inbox' : '/engage' });
         }
       }
 
-      // Projects
-      for (const p of (Array.isArray(projectsRes) ? projectsRes : [])) {
+      // Projects (client-side filter from cache)
+      for (const p of projectsCacheRef.current) {
         if (p.name?.toLowerCase().includes(ql)) {
-          results.push({ id: p.id, title: p.name, type: 'project', subtitle: `${p.openActionCount || 0} tasks`, href: '/organize' });
+          searchResults.push({ id: p.id, title: p.name, type: 'project', subtitle: `${p.openActionCount || 0} tasks`, href: '/organize' });
         }
       }
 
-      // Knowledge objects
-      for (const o of knowledgeRes) {
+      // Knowledge objects (client-side filter from cache)
+      for (const o of knowledgeCacheRef.current) {
         if (o.name?.toLowerCase().includes(ql)) {
-          const props = JSON.parse(o.properties || '{}');
-          results.push({ id: o.id, title: o.name, type: 'knowledge', subtitle: props.value || o.type, href: '/knowledge' });
+          let props: Record<string, unknown> = {};
+          try { props = JSON.parse(o.properties || '{}'); } catch {}
+          searchResults.push({ id: o.id, title: o.name, type: 'knowledge', subtitle: String(props.value || o.type), href: '/knowledge' });
         }
       }
     } catch {
@@ -103,7 +100,7 @@ export function CommandPalette() {
     } finally { if (!signal.aborted) setLoading(false); }
 
     if (!signal.aborted) {
-      setResults(results.slice(0, 15));
+      setResults(searchResults.slice(0, 15));
       setSelectedIdx(0);
     }
   };

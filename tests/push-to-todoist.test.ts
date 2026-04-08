@@ -79,7 +79,8 @@ describe('pushTaskToTodoist', () => {
       description: 'Do the thing',
     }));
     expect(todoist.moveTask).toHaveBeenCalledWith('todoist-task-1', { project_id: 'todoist-proj-1' });
-    expect(todoist.addComment).toHaveBeenCalled();
+    // Context comment only posted when status='inbox' (first push), not on subsequent syncs
+    expect(todoist.addComment).not.toHaveBeenCalled();
   });
 
   it('creates project in Todoist when local project has no todoistId', async () => {

@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Shield, ShieldCheck, ShieldAlert, ShieldX, Loader2, RefreshCw, X, ArrowRight, Inbox, Sparkles, Check } from 'lucide-react';
 import { useIntegrity, useSyncHealth } from '@/components/providers/trust-provider';
 import { cn } from '@/lib/utils';
 import type { IntegrityIssue } from '@/components/providers/trust-provider';
 
 export function HealthIndicator({ compact = false }: { compact?: boolean }) {
+  const router = useRouter();
   const { integrity, runIntegrityCheck, integrityLoading } = useIntegrity();
   const { lastSyncAt, syncFailures, clearSyncFailures } = useSyncHealth();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -87,10 +89,10 @@ export function HealthIndicator({ compact = false }: { compact?: boolean }) {
   const handleResolve = async (issue: IntegrityIssue) => {
     switch (issue.resolution.action) {
       case 'clarify':
-        if (issue.taskId) window.location.href = `/clarify?taskIds=${issue.taskId}`;
+        if (issue.taskId) router.push(`/clarify?taskIds=${issue.taskId}`);
         break;
       case 'review':
-        window.location.href = '/engage';
+        router.push('/engage');
         break;
       case 'import':
         // Trigger a full sync to import the missing task

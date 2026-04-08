@@ -37,12 +37,18 @@ export async function getProjectWithTasks(projectId: string) {
 }
 
 export async function runProjectAudit() {
-  // Parallelize all data fetching
-  const [allProjects, allTasks, context] = await Promise.all([
+  // Fetch data first, then build context from real material
+  const [allProjects, allTasks] = await Promise.all([
     db.query.projects.findMany(),
     db.query.tasks.findMany({ where: ne(schema.tasks.status, 'killed') }),
-    buildContext('', 'organize'),
   ]);
+
+  // Build context from project names + goals for semantic retrieval
+  const projectSummaryInput = allProjects
+    .filter(p => p.status === 'active')
+    .map(p => `${p.name}${p.goal ? ': ' + p.goal : ''}`)
+    .join(' | ');
+  const context = await buildContext(projectSummaryInput, 'organize');
 
   const projectIdToName = new Map(allProjects.map(p => [p.id, p.name]));
 
@@ -78,17 +84,20 @@ export async function runProjectAudit() {
 }
 
 export async function archiveProject(projectId: string) {
-  // Push archive to Todoist (rename with prefix since REST API has no archive)
   const project = await db.query.projects.findFirst({
     where: eq(schema.projects.id, projectId),
   });
   if (project?.todoistId) {
     try {
-      await todoist.updateProject(project.todoistId, {
-        name: `[Archived] ${project.name}`,
-      });
+      await todoist.archiveProject(project.todoistId);
     } catch (e) {
-      console.error('Failed to push archive to Todoist:', e);
+      // Fall back to rename if Sync API fails
+      console.error('Archive via Sync API failed, falling back to rename:', e);
+      try {
+        await todoist.updateProject(project.todoistId, {
+          name: `[Archived] ${project.name}`,
+        });
+      } catch {}
     }
   }
 
@@ -146,23 +155,42 @@ export async function updateProject(projectId: string, data: Partial<schema.NewP
 }
 
 export async function getFilingSuggestions() {
-  const unfiled = await db.query.tasks.findMany({
+  // Fetch all active non-completed tasks
+  const allActive = await db.query.tasks.findMany({
     where: and(
-      isNull(schema.tasks.projectId),
       ne(schema.tasks.status, 'inbox'),
       ne(schema.tasks.status, 'completed'),
       ne(schema.tasks.status, 'killed'),
+      ne(schema.tasks.status, 'someday'),
     ),
   });
 
-  if (unfiled.length === 0) return { suggestions: [] };
+  // Unfiled tasks (no project)
+  const unfiled = allActive.filter(t => !t.projectId);
 
-  const context = await buildContext('', 'organize');
+  // Filed tasks with organizational smells
+  const smelly = allActive.filter(t => {
+    if (!t.projectId) return false; // already in unfiled
+    const hasNoNextAction = !t.nextAction || t.nextAction.trim() === '';
+    const labels = JSON.parse(t.labels || '[]');
+    const hasNoLabels = labels.length === 0;
+    return hasNoNextAction || hasNoLabels;
+  });
+
+  // Unfiled tasks are highest priority, fill remaining slots with smelly filed tasks
+  const candidates = [...unfiled, ...smelly.slice(0, Math.max(0, 30 - unfiled.length))].slice(0, 30);
+  if (candidates.length === 0) return { suggestions: [] };
+
+  const taskInput = candidates.map(t => t.title).join(' | ');
+  const context = await buildContext(taskInput, 'organize');
+
+  const allProjects = await db.query.projects.findMany();
+  const projectMap = new Map(allProjects.map(p => [p.id, p.name]));
 
   return llmGenerateJSON<any>({
     operation: 'file_suggestions',
     system: FILING_SUGGESTIONS_PROMPT,
-    prompt: `## Context\n${context}\n\n## Unfiled Tasks\n${JSON.stringify(unfiled.map(t => ({ id: t.id, title: t.title, nextAction: t.nextAction, labels: t.labels })), null, 2)}`,
+    prompt: `## Context\n${context}\n\n## Tasks to Review\n${JSON.stringify(candidates.map(t => ({ id: t.id, title: t.title, nextAction: t.nextAction, labels: t.labels, currentProject: projectMap.get(t.projectId || '') || null })), null, 2)}`,
   });
 }
 

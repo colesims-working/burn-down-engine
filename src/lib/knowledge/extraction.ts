@@ -296,7 +296,7 @@ export async function writeToExtractionBuffer(entry: {
       void flushExtractionBuffer().catch(() => {});
     }
   } catch (error) {
-    console.error('Failed to write to extraction buffer (non-fatal):', error);
+    // Silenced — Turso free tier transient errors are common and non-fatal
   }
 }
 

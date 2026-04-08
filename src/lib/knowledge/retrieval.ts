@@ -12,6 +12,15 @@
 
 import { knowledgeDb, schema } from './db';
 import { db as taskDb, schema as taskSchema } from '@/lib/db/client';
+
+// DJB2 hash — fast, non-cryptographic, good distribution for cache keys
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { generateQueryEmbedding } from './embedding';
 import {
@@ -48,42 +57,45 @@ interface ScoredObject {
  * Backward-compatible: returns a plain string (markdown).
  * For callers needing metadata, use buildContextFull().
  */
-// ─── Retrieval Serialization ────────────────────────────────
-// Only ONE retrieval pipeline runs at a time. Concurrent calls wait and share
-// the result. This prevents 5 concurrent clarify calls from firing 40+ Turso
-// queries simultaneously, which causes SQLITE_NOMEM on the free tier.
-// Results cached for 2 minutes since the knowledge graph doesn't change mid-batch.
-let _contextCache: { context: string; ts: number } | null = null;
-let _contextInFlight: Promise<string> | null = null;
+// ─── Retrieval Cache (per page+input) ───────────────────────
+// Keyed by page + input to prevent empty-string calls from poisoning real queries.
+// Only one retrieval runs at a time per key — concurrent calls share the result.
+const _contextCache = new Map<string, { context: string; ts: number }>();
+const _inFlightByKey = new Map<string, Promise<string>>();
 const CONTEXT_CACHE_TTL = 120_000;
 
 export async function buildKnowledgeContext(
   input: string,
   page: PageContext | string,
 ): Promise<string> {
-  // Cache hit — reuse recent context (knowledge graph doesn't change mid-batch)
-  if (_contextCache && Date.now() - _contextCache.ts < CONTEXT_CACHE_TTL) {
-    return _contextCache.context;
+  // Hash the full input to prevent long-input collisions (Issue 14)
+  const cacheKey = `${String(page)}:${simpleHash(input)}`;
+
+  // Cache hit
+  const cached = _contextCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < CONTEXT_CACHE_TTL) {
+    return cached.context;
   }
 
-  // If another retrieval is already running, wait for it instead of firing another
-  if (_contextInFlight) return _contextInFlight;
+  // If another retrieval for the same key is in flight, wait for it
+  const inFlight = _inFlightByKey.get(cacheKey);
+  if (inFlight) return inFlight;
 
-  // Run the pipeline — only one at a time
+  // Run the pipeline — one at a time per key
   const promise = (async () => {
     try {
       const result = await buildContextFull(input, page as PageContext);
       const combined = [result.globalContext, result.retrievedContext]
         .filter(s => s.length > 0)
         .join('\n\n');
-      _contextCache = { context: combined, ts: Date.now() };
+      _contextCache.set(cacheKey, { context: combined, ts: Date.now() });
       return combined;
     } finally {
-      _contextInFlight = null;
+      _inFlightByKey.delete(cacheKey);
     }
   })();
 
-  _contextInFlight = promise;
+  _inFlightByKey.set(cacheKey, promise);
   return promise;
 }
 
@@ -255,6 +267,13 @@ async function buildGlobalContext(): Promise<string> {
 let _objectCache: { objects: any[]; ts: number } | null = null;
 const OBJECT_CACHE_TTL = 120_000; // 2 minutes
 
+/** Invalidate all retrieval caches. Call after knowledge writes. */
+export function invalidateRetrievalCaches(): void {
+  _objectCache = null;
+  _contextCache.clear();
+  _inFlightByKey.clear();
+}
+
 async function getActiveObjectsWithEmbeddings(): Promise<any[]> {
   if (_objectCache && Date.now() - _objectCache.ts < OBJECT_CACHE_TTL) {
     return _objectCache.objects;
@@ -372,8 +391,12 @@ async function checkDormantReactivation(queryEmbedding: number[]): Promise<numbe
     if (obj.supersededBy || !obj.embedding) continue;
     let storedVec: number[];
     try {
-      storedVec = Array.isArray(obj.embedding) ? obj.embedding
-        : Array.from(new Float32Array(Buffer.from(obj.embedding as ArrayBuffer).buffer));
+      if (Array.isArray(obj.embedding)) {
+        storedVec = obj.embedding;
+      } else {
+        const buf = Buffer.from(obj.embedding as ArrayBuffer);
+        storedVec = Array.from(new Float32Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)));
+      }
     } catch { continue; }
 
     const similarity = cosineSimArrays(queryEmbedding, storedVec);

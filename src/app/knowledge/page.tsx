@@ -16,22 +16,36 @@ export default function KnowledgePage() {
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
   const [stats, setStats] = useState<any>(null);
 
-  const fetchObjects = useCallback(async () => {
+  const [loadedStatuses, setLoadedStatuses] = useState<Set<string>>(new Set());
+
+  // Load active objects on mount (fast). Dormant/absorbed load lazily on filter change.
+  const fetchObjectsByStatus = useCallback(async (status: string) => {
+    if (loadedStatuses.has(status)) return;
     try {
-      // Fetch all statuses for the list view
-      const [activeRes, dormantRes, statsRes] = await Promise.all([
-        fetch('/api/todoist?action=knowledge&status=active'),
-        fetch('/api/todoist?action=knowledge&status=dormant'),
-        fetch('/api/todoist?action=knowledge-stats'),
-      ]);
-      const active = activeRes.ok ? await activeRes.json() : [];
-      const dormant = dormantRes.ok ? await dormantRes.json() : [];
-      setObjects([...active, ...dormant]);
-      if (statsRes.ok) setStats(await statsRes.json());
-    } catch {} finally { setLoading(false); }
+      const res = await fetch(`/api/todoist?action=knowledge&status=${status}`);
+      if (res.ok) {
+        const data = await res.json();
+        setObjects(prev => [...prev, ...data]);
+        setLoadedStatuses(prev => new Set(prev).add(status));
+      }
+    } catch {}
+  }, [loadedStatuses]);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/todoist?action=knowledge-stats');
+      if (res.ok) setStats(await res.json());
+    } catch {}
   }, []);
 
-  useEffect(() => { fetchObjects(); }, [fetchObjects]);
+  // On mount: load active objects + stats only
+  useEffect(() => {
+    (async () => {
+      await fetchObjectsByStatus('active');
+      fetchStats(); // fire-and-forget
+      setLoading(false);
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectObject = (id: string) => setSelectedObjectId(id);
   const handleBack = () => setSelectedObjectId(null);
@@ -44,7 +58,7 @@ export default function KnowledgePage() {
         <ObjectDetail
           objectId={selectedObjectId}
           onBack={handleBack}
-          onRefresh={fetchObjects}
+          onRefresh={() => { setObjects([]); setLoadedStatuses(new Set()); fetchObjectsByStatus('active'); }}
         />
       </div>
     );
@@ -69,6 +83,7 @@ export default function KnowledgePage() {
           <ObjectList
             objects={objects}
             loading={loading}
+            onStatusFilterChange={(status) => fetchObjectsByStatus(status)}
             onSelectObject={handleSelectObject}
           />
         </TabsContent>

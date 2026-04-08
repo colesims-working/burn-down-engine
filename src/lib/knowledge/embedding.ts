@@ -164,7 +164,7 @@ async function trackEmbeddingCall(data: {
       },
     });
 
-    await langfuse.flushAsync();
+    void langfuse.flushAsync().catch(() => {});
   } catch (error) {
     console.error('Failed to log embedding to Langfuse:', error);
   }

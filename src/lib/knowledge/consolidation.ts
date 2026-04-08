@@ -40,25 +40,38 @@ export async function runConsolidation(
 ): Promise<ConsolidationResult> {
   const scope = options.scope ?? 'full';
 
-  // Concurrency guard
-  const existing = await knowledgeDb.query.consolidationRuns.findFirst({
-    where: eq(schema.consolidationRuns.status, 'running'),
-  });
-  if (existing) {
+  // Concurrency guard — atomic check + insert in a transaction
+  let runId: string;
+  try {
+    const txResult = await knowledgeDb.transaction(async (tx) => {
+      const existing = await tx.query.consolidationRuns.findFirst({
+        where: eq(schema.consolidationRuns.status, 'running'),
+      });
+      if (existing) return { alreadyRunning: true, runId: existing.id };
+
+      const run = await tx.insert(schema.consolidationRuns).values({
+        scope,
+        status: 'running',
+      }).returning();
+      return { alreadyRunning: false, runId: run[0].id };
+    });
+
+    if (txResult.alreadyRunning) {
+      return {
+        runId: txResult.runId,
+        dormancyTransitions: 0, reactivations: 0, mergesPerformed: 0,
+        synthesesCreated: 0, objectsAbsorbed: 0, referencesPurged: 0,
+        errors: ['Consolidation already running'],
+      };
+    }
+    runId = txResult.runId;
+  } catch (e) {
     return {
-      runId: existing.id,
-      dormancyTransitions: 0, reactivations: 0, mergesPerformed: 0,
+      runId: '', dormancyTransitions: 0, reactivations: 0, mergesPerformed: 0,
       synthesesCreated: 0, objectsAbsorbed: 0, referencesPurged: 0,
-      errors: ['Consolidation already running'],
+      errors: [`Failed to start consolidation: ${(e as Error).message}`],
     };
   }
-
-  // Create run record
-  const run = await knowledgeDb.insert(schema.consolidationRuns).values({
-    scope,
-    status: 'running',
-  }).returning();
-  const runId = run[0].id;
   const sourceContext = `consolidation:${runId}`;
 
   const result: ConsolidationResult = {
@@ -69,30 +82,30 @@ export async function runConsolidation(
   };
 
   try {
-    // Step 1: Dormancy
+    // Step 1: Dormancy (always runs — lightweight status transitions)
     if (!options.dryRun) {
       const dormancy = await runDormancy(runId, sourceContext);
       result.dormancyTransitions = dormancy.transitions;
       result.errors.push(...dormancy.errors);
     }
 
-    // Step 2: Deduplication
-    if (!options.dryRun) {
+    // Step 2: Deduplication (skip for active_only scope — expensive, destructive)
+    if (!options.dryRun && scope === 'full') {
       const dedup = await runDeduplication(runId, sourceContext);
       result.mergesPerformed = dedup.merges;
       result.objectsAbsorbed += dedup.absorbed;
       result.errors.push(...dedup.errors);
     }
 
-    // Step 3: Synthesis
-    if (!options.dryRun) {
+    // Step 3: Synthesis (skip for active_only scope — expensive, creates new objects)
+    if (!options.dryRun && scope === 'full') {
       const synth = await runSynthesis(runId, sourceContext);
       result.synthesesCreated = synth.created;
       result.objectsAbsorbed += synth.absorbed;
       result.errors.push(...synth.errors);
     }
 
-    // Step 4: Reference cleanup
+    // Step 4: Reference cleanup (always runs — lightweight maintenance)
     if (!options.dryRun) {
       const cleanup = await runReferenceCleanup();
       result.referencesPurged = cleanup.purged;
@@ -242,7 +255,7 @@ async function runDeduplication(
             const survivor = obj;
             const retired = match;
 
-            // Update survivor with merged properties
+            // Update survivor with merged properties (base write in transaction)
             await tx.update(schema.objects).set({
               properties: JSON.stringify(evaluation.mergedProperties),
               name: evaluation.survivorName || survivor.name,
@@ -266,22 +279,36 @@ async function runDeduplication(
               linkType: 'absorbed_into',
               confidence: 1.0,
               source: 'consolidated',
+              sourceContext,
             });
 
-            // Re-point all links from retired to survivor
+            // Re-point all links from retired to survivor, tagging with sourceContext for rollback
             await tx.update(schema.links).set({
               sourceId: survivor.id,
+              sourceContext: `rewrite:${sourceContext}:${retired.id}`,
             }).where(and(
               eq(schema.links.sourceId, retired.id),
               ne(schema.links.linkType, 'absorbed_into'),
             ));
             await tx.update(schema.links).set({
               targetId: survivor.id,
+              sourceContext: `rewrite:${sourceContext}:${retired.id}`,
             }).where(and(
               eq(schema.links.targetId, retired.id),
               ne(schema.links.linkType, 'absorbed_into'),
             ));
           });
+
+          // Recompute invariants outside the transaction (aliases, dedupKey, embeddings)
+          try {
+            const { updateKnowledgeObject } = await import('./upsert');
+            await updateKnowledgeObject(obj.id, {
+              name: evaluation.survivorName || obj.name,
+              properties: evaluation.mergedProperties,
+            }, sourceContext);
+          } catch (e) {
+            errors.push(`Invariant recompute for "${obj.name}": ${(e as Error).message}`);
+          }
 
           alreadyMerged.add(match.id);
           merges++;
@@ -458,6 +485,7 @@ async function runSynthesis(
             linkType: 'absorbed_into',
             confidence: 1.0,
             source: 'consolidated',
+            sourceContext,
           });
 
           // Inherit relevant links from source (not absorbed_into)
@@ -483,6 +511,42 @@ async function runSynthesis(
           }
         }
       });
+
+      // Attach alias, embedding, and evidence (Issue 12: half-formed synthesis fix)
+      try {
+        const { createAlias } = await import('./aliases');
+        const { createEvidence } = await import('./evidence');
+        const { generateEmbedding, buildEmbeddingText } = await import('./embedding');
+        // Re-query the insight to get its ID
+        const freshInsight = await knowledgeDb.query.objects.findFirst({
+          where: and(
+            eq(schema.objects.source, 'consolidated'),
+            eq(schema.objects.sourceContext, sourceContext),
+            eq(schema.objects.name, synthesis.insightName),
+          ),
+        });
+        if (freshInsight) {
+          await createAlias(freshInsight.id, freshInsight.name);
+          await createEvidence({
+            objectId: freshInsight.id,
+            sourceContext,
+            evidenceType: 'extraction',
+            snippet: `Synthesized from ${clusterObjects.length} observations`,
+            confidence: synthesis.confidence,
+          });
+          try {
+            const embText = buildEmbeddingText({ type: 'concept', name: freshInsight.name, properties: JSON.parse(freshInsight.properties || '{}') });
+            const emb = await generateEmbedding(embText, { sourceContext });
+            await knowledgeDb.update(schema.objects).set({
+              embedding: emb,
+              embeddingModel: 'qwen3-embedding-8b',
+              embeddingText: embText,
+            }).where(eq(schema.objects.id, freshInsight.id));
+          } catch {}
+        }
+      } catch (e) {
+        errors.push(`Synthesis invariants: ${(e as Error).message}`);
+      }
 
       created++;
       absorbed += clusterObjects.length;
@@ -616,11 +680,32 @@ export async function revertConsolidationRun(runId: string): Promise<{ reverted:
         }
       }
 
-      // 4. Delete absorbed_into links created by this run
+      // 4. Delete absorbed_into links created by THIS run only (scoped by sourceContext)
       await tx.delete(schema.links).where(and(
         eq(schema.links.linkType, 'absorbed_into'),
-        eq(schema.links.source, 'consolidated'),
+        eq(schema.links.sourceContext, sourceContext),
       ));
+
+      // 4b. Restore rewritten links — they carry sourceContext 'rewrite:<runSourceContext>:<retiredId>'
+      const rewritePrefix = `rewrite:${sourceContext}:`;
+      const rewrittenLinks = await tx.query.links.findMany({
+        where: sql`${schema.links.sourceContext} LIKE ${rewritePrefix + '%'}`,
+      });
+      for (const link of rewrittenLinks) {
+        const retiredId = link.sourceContext!.replace(rewritePrefix, '');
+        const updates: Record<string, unknown> = { sourceContext: null };
+        // Restore the original retired object ID
+        // The survivor ID was written over the retired ID — reverse it
+        const absorbedLinks = await tx.query.links.findMany({
+          where: and(eq(schema.links.linkType, 'absorbed_into'), eq(schema.links.sourceId, retiredId)),
+        });
+        const survivorId = absorbedLinks[0]?.targetId;
+        if (survivorId) {
+          if (link.sourceId === survivorId) updates.sourceId = retiredId;
+          if (link.targetId === survivorId) updates.targetId = retiredId;
+        }
+        await tx.update(schema.links).set(updates).where(eq(schema.links.id, link.id));
+      }
 
       // 5. Mark run as reverted
       await tx.update(schema.consolidationRuns).set({

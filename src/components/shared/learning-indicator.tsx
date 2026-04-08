@@ -1,49 +1,62 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Brain } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
  * Learning indicator: shows a small toast when the knowledge system
- * extracts new facts from LLM interactions. Listens for 'llm-complete'
- * events (fired by pages after LLM calls) and checks recent extractions.
+ * extracts new facts from LLM interactions.
+ *
+ * Listens for 'knowledge-extracted' events with payload { count, items }.
+ * Falls back to checking the extraction-recent endpoint if the event
+ * has no payload (legacy callers).
  */
 export function LearningIndicator() {
   const [visible, setVisible] = useState(false);
   const [count, setCount] = useState(0);
   const [items, setItems] = useState<{ id: string; name: string }[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [lastCheckTime, setLastCheckTime] = useState(0);
-
-  const checkRecentExtractions = useCallback(async () => {
-    // Debounce: don't check more than once per 10 seconds
-    if (Date.now() - lastCheckTime < 10000) return;
-    setLastCheckTime(Date.now());
-
-    try {
-      const res = await fetch('/api/todoist?action=extraction-recent');
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.count > 0) {
-        setCount(data.count);
-        setItems(data.items);
-        setVisible(true);
-        // Auto-hide after 8 seconds
-        setTimeout(() => setVisible(false), 8000);
-      }
-    } catch {}
-  }, [lastCheckTime]);
+  const lastCheckRef = useRef(0);
 
   useEffect(() => {
-    // Check after LLM calls complete (pages fire this event)
-    const handler = () => {
-      // Small delay to let async extraction finish
-      setTimeout(() => checkRecentExtractions(), 3000);
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+
+      // If the event carries extraction data, use it directly (no fetch needed)
+      if (detail?.count > 0) {
+        setCount(detail.count);
+        setItems(detail.items || []);
+        setVisible(true);
+        setTimeout(() => setVisible(false), 8000);
+        return;
+      }
+
+      // Fallback: check the server, but debounce to 30s
+      if (Date.now() - lastCheckRef.current < 30000) return;
+      lastCheckRef.current = Date.now();
+
+      try {
+        const res = await fetch('/api/todoist?action=extraction-recent');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.count > 0) {
+          setCount(data.count);
+          setItems(data.items);
+          setVisible(true);
+          setTimeout(() => setVisible(false), 8000);
+        }
+      } catch {}
     };
+
+    // Listen for both the new event and the legacy event
+    window.addEventListener('knowledge-extracted', handler);
     window.addEventListener('llm-complete', handler);
-    return () => window.removeEventListener('llm-complete', handler);
-  }, [checkRecentExtractions]);
+    return () => {
+      window.removeEventListener('knowledge-extracted', handler);
+      window.removeEventListener('llm-complete', handler);
+    };
+  }, []); // Stable — no dependency on lastCheckTime
 
   if (!visible) return null;
 

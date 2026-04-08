@@ -76,6 +76,7 @@ export const links = sqliteTable('links', {
   properties: text('properties').default('{}'),
   confidence: real('confidence').notNull().default(0.7),
   source: text('source').notNull().default('extracted'),
+  sourceContext: text('source_context'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (table) => ({

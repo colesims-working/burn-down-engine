@@ -1,5 +1,5 @@
 import { db, schema } from '@/lib/db/client';
-import { eq, and, ne, sql, asc, lte, isNotNull, isNull } from 'drizzle-orm';
+import { eq, and, ne, sql, asc, lte, isNotNull, isNull, inArray } from 'drizzle-orm';
 import { llmGenerateJSON } from '@/lib/llm/router';
 import { buildContext } from '@/lib/llm/context';
 import { RANK_TASKS_PROMPT } from '@/lib/llm/prompts/engage';
@@ -58,7 +58,8 @@ function deterministicSort(tasks: schema.Task[]): schema.Task[] {
 
 export async function rankTasksInTier(
   taskList: schema.Task[],
-  tier: number
+  tier: number,
+  prebuiltContext?: string,
 ): Promise<string[]> {
   if (taskList.length <= 1) return taskList.map(t => t.id);
 
@@ -66,14 +67,23 @@ export async function rankTasksInTier(
   const preSorted = deterministicSort(taskList);
   const allIds = new Set(preSorted.map(t => t.id));
 
-  const context = await buildContext('', 'engage');
+  // Use prebuilt context if provided, otherwise build fresh
+  const context = prebuiltContext ?? await buildContext(preSorted.map(t => t.title).join(' | '), 'engage');
   const currentHour = new Date().getHours();
+
+  // Resolve project names for the LLM (Issue 7)
+  const projectIds = [...new Set(preSorted.map(t => t.projectId).filter(Boolean))] as string[];
+  const projects = projectIds.length > 0
+    ? await db.query.projects.findMany({ where: inArray(schema.projects.id, projectIds) })
+    : [];
+  const projectMap = new Map(projects.map(p => [p.id, p]));
 
   const taskSummaries = preSorted.map(t => ({
     id: t.id,
     title: t.title,
     nextAction: t.nextAction,
-    projectId: t.projectId,
+    projectName: projectMap.get(t.projectId || '')?.name || 'Inbox',
+    projectGoal: projectMap.get(t.projectId || '')?.goal || null,
     timeEstimateMin: t.timeEstimateMin,
     energyLevel: t.energyLevel,
     labels: JSON.parse(t.labels || '[]'),
@@ -104,14 +114,170 @@ export async function rankTasksInTier(
       if (!seen.has(id)) validated.push(id);
     }
 
+    // Persist rank so Fire victim selection is meaningful (Issue 10)
+    await persistRanks(validated);
     return validated;
   } catch {
     // Fallback: use deterministic sort
-    return preSorted.map(t => t.id);
+    const fallback = preSorted.map(t => t.id);
+    await persistRanks(fallback);
+    return fallback;
   }
 }
 
-// ─── Build Today's Ranked List ───────────────────────────────
+async function persistRanks(rankedIds: string[]): Promise<void> {
+  try {
+    await db.transaction(async (tx) => {
+      for (let i = 0; i < rankedIds.length; i++) {
+        await tx.update(schema.tasks)
+          .set({ rankWithinTier: i + 1 })
+          .where(eq(schema.tasks.id, rankedIds[i]));
+      }
+    });
+  } catch (e) {
+    console.error('Failed to persist rank:', e);
+  }
+}
+
+// ─── Deferred Resolution (separated from read path) ─────────
+
+export async function resolveDeferred(): Promise<number> {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  let resolved = 0;
+
+  const deferredDue = await db.query.tasks.findMany({
+    where: and(
+      eq(schema.tasks.status, 'deferred'),
+      isNotNull(schema.tasks.dueDate),
+      lte(schema.tasks.dueDate, today),
+    ),
+  });
+  for (const t of deferredDue) {
+    await db.update(schema.tasks)
+      .set({ status: 'active', updatedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, t.id));
+    resolved++;
+  }
+
+  const deferredStuck = await db.query.tasks.findMany({
+    where: and(
+      eq(schema.tasks.status, 'deferred'),
+      isNull(schema.tasks.dueDate),
+    ),
+  });
+  for (const t of deferredStuck) {
+    await db.update(schema.tasks)
+      .set({ status: 'active', updatedAt: new Date().toISOString() })
+      .where(eq(schema.tasks.id, t.id));
+    resolved++;
+  }
+
+  return resolved;
+}
+
+// ─── Fast Read Path (no LLM, no writes) ─────────────────────
+
+type EngageData = {
+  fires: schema.Task[];
+  mustDo: schema.Task[];
+  shouldDo: schema.Task[];
+  thisWeek: schema.Task[];
+  backlog: schema.Task[];
+  waiting: schema.Task[];
+  blocked: schema.Task[];
+  someday: schema.Task[];
+  completed: schema.Task[];
+  rankStale?: boolean;
+};
+
+let _lastRankTime = 0;
+const RANK_STALE_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function buildEngageListFast(): Promise<EngageData> {
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  const allTasks = await db.query.tasks.findMany({
+    where: and(
+      ne(schema.tasks.status, 'killed'),
+      ne(schema.tasks.status, 'inbox'),
+    ),
+  });
+
+  const isActiveTier = (t: schema.Task) => t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred' && t.status !== 'someday' && t.status !== 'needs_reconcile';
+  const fires = allTasks.filter(t => t.priority === 0 && isActiveTier(t));
+  const p1 = allTasks.filter(t => t.priority === 1 && isActiveTier(t));
+  const p2 = allTasks.filter(t => t.priority === 2 && isActiveTier(t));
+  const p3 = allTasks.filter(t => t.priority === 3 && isActiveTier(t));
+  const p4 = allTasks.filter(t => t.priority === 4 && isActiveTier(t));
+  const waiting = allTasks.filter(t => t.status === 'waiting');
+  const blocked = allTasks.filter(t => t.status === 'blocked');
+  const someday = allTasks.filter(t => t.status === 'someday');
+  const completed = allTasks.filter(t =>
+    t.status === 'completed' && t.completedAt && t.completedAt.startsWith(today)
+  );
+
+  // Deterministic multi-field sort — no LLM needed for consistent ordering
+  const URGENCY_ORDER: Record<string, number> = { deadline: 0, blocking: 1, momentum: 2, routine: 3, flexible: 4 };
+  const deterministicTierSort = (tasks: schema.Task[]) =>
+    [...tasks].sort((a, b) => {
+      // 1. Overdue tasks first
+      const aOverdue = a.dueDate && a.dueDate < today ? 1 : 0;
+      const bOverdue = b.dueDate && b.dueDate < today ? 1 : 0;
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+      // 2. Urgency class
+      const aUrgency = URGENCY_ORDER[(a as any).urgencyClass || 'flexible'] ?? 4;
+      const bUrgency = URGENCY_ORDER[(b as any).urgencyClass || 'flexible'] ?? 4;
+      if (aUrgency !== bUrgency) return aUrgency - bUrgency;
+      // 3. Due date (soonest first)
+      if (a.dueDate && b.dueDate) {
+        const cmp = a.dueDate.localeCompare(b.dueDate);
+        if (cmp !== 0) return cmp;
+      } else if (a.dueDate) return -1;
+      else if (b.dueDate) return 1;
+      // 4. LLM rank if available (from previous rerank)
+      const aRank = a.rankWithinTier ?? 999;
+      const bRank = b.rankWithinTier ?? 999;
+      if (aRank !== bRank) return aRank - bRank;
+      // 5. Bump count (most bumped = most overdue attention)
+      if ((b.bumpCount || 0) !== (a.bumpCount || 0)) return (b.bumpCount || 0) - (a.bumpCount || 0);
+      // 6. Shorter tasks first (quick wins)
+      return (a.timeEstimateMin || 30) - (b.timeEstimateMin || 30);
+    });
+
+  return {
+    fires,
+    mustDo: deterministicTierSort(p1),
+    shouldDo: deterministicTierSort(p2),
+    thisWeek: deterministicTierSort(p3),
+    backlog: deterministicTierSort(p4),
+    waiting,
+    blocked,
+    someday,
+    completed,
+    rankStale,
+  };
+}
+
+// ─── Background Rerank ──────────────────────────────────────
+
+let _rerankInFlight = false;
+
+export async function rerankEngageTiers(): Promise<EngageData> {
+  if (_rerankInFlight) {
+    // Another rerank is already running — return the fast path
+    return buildEngageListFast();
+  }
+  _rerankInFlight = true;
+  try {
+    const result = await buildEngageList();
+    _lastRankTime = Date.now();
+    return result;
+  } finally {
+    _rerankInFlight = false;
+  }
+}
+
+// ─── Full Build (with LLM ranking — used by rerank) ─────────
 
 export async function buildEngageList(): Promise<{
   fires: schema.Task[];
@@ -126,32 +292,8 @@ export async function buildEngageList(): Promise<{
 }> {
   const today = format(new Date(), 'yyyy-MM-dd');
 
-  // Auto-resolve deferred tasks whose due date has arrived
-  const deferredDue = await db.query.tasks.findMany({
-    where: and(
-      eq(schema.tasks.status, 'deferred'),
-      isNotNull(schema.tasks.dueDate),
-      lte(schema.tasks.dueDate, today),
-    ),
-  });
-  for (const t of deferredDue) {
-    await db.update(schema.tasks)
-      .set({ status: 'active', updatedAt: new Date().toISOString() })
-      .where(eq(schema.tasks.id, t.id));
-  }
-
-  // Rescue deferred tasks stuck without a due date
-  const deferredStuck = await db.query.tasks.findMany({
-    where: and(
-      eq(schema.tasks.status, 'deferred'),
-      isNull(schema.tasks.dueDate),
-    ),
-  });
-  for (const t of deferredStuck) {
-    await db.update(schema.tasks)
-      .set({ status: 'active', updatedAt: new Date().toISOString() })
-      .where(eq(schema.tasks.id, t.id));
-  }
+  // Resolve deferred tasks first (writes separated from the fast-read path)
+  await resolveDeferred();
 
   // Get all active/relevant tasks
   const allTasks = await db.query.tasks.findMany({
@@ -161,11 +303,12 @@ export async function buildEngageList(): Promise<{
     ),
   });
 
-  const fires = allTasks.filter(t => t.priority === 0 && t.status !== 'completed' && t.status !== 'deferred');
-  const p1 = allTasks.filter(t => t.priority === 1 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
-  const p2 = allTasks.filter(t => t.priority === 2 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
-  const p3 = allTasks.filter(t => t.priority === 3 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
-  const p4 = allTasks.filter(t => t.priority === 4 && t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred');
+  const isActiveTier = (t: schema.Task) => t.status !== 'completed' && t.status !== 'waiting' && t.status !== 'blocked' && t.status !== 'deferred' && t.status !== 'someday' && t.status !== 'needs_reconcile';
+  const fires = allTasks.filter(t => t.priority === 0 && isActiveTier(t));
+  const p1 = allTasks.filter(t => t.priority === 1 && isActiveTier(t));
+  const p2 = allTasks.filter(t => t.priority === 2 && isActiveTier(t));
+  const p3 = allTasks.filter(t => t.priority === 3 && isActiveTier(t));
+  const p4 = allTasks.filter(t => t.priority === 4 && isActiveTier(t));
   const waiting = allTasks.filter(t => t.status === 'waiting');
   const blocked = allTasks.filter(t => t.status === 'blocked');
   const someday = allTasks.filter(t => t.status === 'someday');
@@ -175,11 +318,15 @@ export async function buildEngageList(): Promise<{
     t.status === 'completed' && t.completedAt && t.completedAt.startsWith(today)
   );
 
-  // Rank P1 and P2 in parallel (independent tiers, each makes a context + LLM call)
+  // Build shared context once for both tiers (one embedding call, not two)
   const t0 = Date.now();
+  const allActiveTitles = [...p1, ...p2].map(t => t.title).join(' | ');
+  const sharedContext = await buildContext(allActiveTitles, 'engage');
+
+  // Rank P1 and P2 in parallel using shared context
   const [mustDoIds, shouldDoIds] = await Promise.all([
-    rankTasksInTier(p1, 1),
-    rankTasksInTier(p2, 2),
+    rankTasksInTier(p1, 1, sharedContext),
+    rankTasksInTier(p2, 2, sharedContext),
   ]);
   console.log(`[engage] parallel rank (P1=${p1.length}, P2=${p2.length}): ${Date.now()-t0}ms`);
 
@@ -227,16 +374,23 @@ export async function handleFire(opts: {
       priority: mapToTodoistPriority(0),
     });
 
-    const created = await db.insert(schema.tasks)
-      .values({
-        todoistId: todoistTask.id,
-        originalText: opts.description,
-        title: opts.description,
-        priority: 0,
-        status: 'active',
-        todoistSyncedAt: new Date().toISOString(),
-      })
-      .returning();
+    let created;
+    try {
+      created = await db.insert(schema.tasks)
+        .values({
+          todoistId: todoistTask.id,
+          originalText: opts.description,
+          title: opts.description,
+          priority: 0,
+          status: 'active',
+          todoistSyncedAt: new Date().toISOString(),
+        })
+        .returning();
+    } catch (dbError) {
+      // Clean up Todoist task if local insert fails
+      try { await todoist.deleteTask(todoistTask.id); } catch {}
+      throw dbError;
+    }
     fireTask = created[0];
   }
 
@@ -247,26 +401,34 @@ export async function handleFire(opts: {
     details: JSON.stringify({ description: opts.description }),
   });
 
-  // Find lowest P2 to bump
+  // Find lowest-ranked P2 to bump (by rank within tier, then oldest created)
   const p2Tasks = await db.query.tasks.findMany({
     where: and(
       eq(schema.tasks.priority, 2),
       ne(schema.tasks.status, 'completed'),
       ne(schema.tasks.status, 'killed'),
     ),
+    orderBy: (t, { asc, desc }) => [desc(t.rankWithinTier), asc(t.createdAt)],
   });
 
   let bumpedTask: schema.Task | null = null;
   if (p2Tasks.length > 0) {
-    const toBump = p2Tasks[p2Tasks.length - 1];
+    // Take first element — desc(rankWithinTier) puts worst-ranked (highest number) first
+    const toBump = p2Tasks[0];
+    const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
     const updated = await db.update(schema.tasks)
       .set({
         bumpCount: (toBump.bumpCount || 0) + 1,
+        dueDate: tomorrow,
+        status: 'deferred',
         updatedAt: new Date().toISOString(),
       })
       .where(eq(schema.tasks.id, toBump.id))
       .returning();
     bumpedTask = updated[0];
+
+    // Sync the deferral to Todoist
+    try { await syncTaskDueDate(bumpedTask); } catch {}
 
     await db.insert(schema.taskHistory).values({
       taskId: toBump.id,

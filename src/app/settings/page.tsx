@@ -396,18 +396,11 @@ export default function SettingsPage() {
       done++;
       setTestAllProgress({ done, total: allModels.length });
     };
-    // Concurrency-limited: 3 at a time
+    // Concurrency-limited: 3 at a time (simple batching)
     const CONCURRENCY = 3;
-    const running: Promise<void>[] = [];
-    for (const m of queue) {
-      const p = runTest(m);
-      running.push(p);
-      if (running.length >= CONCURRENCY) {
-        await Promise.race(running);
-        running.splice(running.findIndex(r => r === p), 1);
-      }
+    for (let i = 0; i < queue.length; i += CONCURRENCY) {
+      await Promise.all(queue.slice(i, i + CONCURRENCY).map(m => runTest(m)));
     }
-    await Promise.all(running);
 
     setTestAllRunning(false);
   };
@@ -475,6 +468,27 @@ export default function SettingsPage() {
             >
               <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
               {syncing ? 'Syncing...' : 'Full Sync'}
+            </button>
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-lg bg-secondary/50 px-4 py-3">
+            <div>
+              <div className="text-sm font-medium">Integrity Check</div>
+              <div className="text-xs text-muted-foreground">Periodically compares local tasks with Todoist. Can be slow with many tasks.</div>
+            </div>
+            <button
+              onClick={() => {
+                const current = localStorage.getItem('integrity-check-disabled') === '1';
+                localStorage.setItem('integrity-check-disabled', current ? '0' : '1');
+                toast({ title: current ? 'Integrity check enabled' : 'Integrity check disabled', duration: 2000 });
+              }}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-xs font-medium',
+                typeof window !== 'undefined' && localStorage.getItem('integrity-check-disabled') === '1'
+                  ? 'bg-amber-500/20 text-amber-400'
+                  : 'bg-green-500/20 text-green-400',
+              )}
+            >
+              {typeof window !== 'undefined' && localStorage.getItem('integrity-check-disabled') === '1' ? 'Disabled' : 'Enabled'}
             </button>
           </div>
         </Section>

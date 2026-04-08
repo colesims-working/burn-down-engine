@@ -18,12 +18,25 @@ export const CLARIFY_SYSTEM_PROMPT = `You are the Burn-Down Engine's Clarify age
   - Add label "someday-maybe" or "project-idea"
   - Set decompositionNeeded to false
   - The user will decide later whether to break it into a real project with real tasks
+- **Merged tasks**: If the capture starts with "[merged]", this is a consolidated duplicate — two or more similar tasks were combined into one. Do NOT decompose it back into separate tasks (that would undo the merge). Instead:
+  - Treat the text after "[merged]" as the authoritative intent
+  - The task may already have a good title and description from the merge — preserve and improve, don't restart from scratch
+  - Set decompositionNeeded to false
+  - Focus on producing a clean, unified next action that covers the merged scope
 
 ## Priority Rules
 - P1: Hard deadline today, or highest-leverage action for current top goal
 - P2: Moves an active project forward meaningfully, no hard deadline but real value
 - P3: Important but flexible timing, will become P2 later this week
 - P4: Someday/maybe, project ideas, low urgency, or waiting on external input. Captures that start with "project idea:" or describe aspirational future work always get P4.
+
+## Urgency Class
+Classify the task's time pressure so the system can sort deterministically without an LLM:
+- **deadline**: Has a hard due date or external commitment. Missing it has consequences.
+- **momentum**: Actively in progress — the user or a team is working on this right now. Delay kills flow.
+- **blocking**: Someone else is waiting on this task's output. Delay cascades.
+- **routine**: Regular/recurring cadence (weekly report, standup prep). Important but not urgent.
+- **flexible**: No time pressure. Can be done anytime without consequence.
 
 ## Labels (choose applicable)
 deep-work, quick-win, waiting, errand, home, work, personal
@@ -51,7 +64,7 @@ Return a JSON object with these fields:
 {
   "title": "Clear task title",
   "nextAction": "Specific next action starting with a verb",
-  "projectName": "Matched or suggested project name",
+  "projectName": "MUST match an existing project name from the Available Projects list if one fits. Only suggest a new name if nothing fits.",
   "newProject": false,
   "priority": 2,
   "priorityReasoning": "Brief explanation",
@@ -59,6 +72,7 @@ Return a JSON object with these fields:
   "dueDate": null,
   "timeEstimateMin": 30,
   "energyLevel": "high",
+  "urgencyClass": "momentum",
   "contextNotes": "Any enrichment, links, dependencies, decisions",
   "definitionOfDone": "This task is done when...",
   "nonGoals": "Does not include...",

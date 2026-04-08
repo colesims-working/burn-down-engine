@@ -203,6 +203,35 @@ class TodoistClient {
     });
   }
 
+  async deleteProject(id: string): Promise<void> {
+    await this.request(`/projects/${id}`, { method: 'DELETE' });
+  }
+
+  async archiveProject(id: string): Promise<void> {
+    // The REST API v1 doesn't support archive directly.
+    // Use the Sync API to archive.
+    const commandUuid = crypto.randomUUID();
+    const res = await fetch('https://api.todoist.com/sync/v9/sync', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        commands: [{ type: 'project_archive', uuid: commandUuid, args: { id } }],
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Todoist archive failed: ${res.status} ${res.statusText}`);
+    }
+    // Sync API returns 200 even on command failure — check sync_status
+    const data = await res.json();
+    const commandStatus = data?.sync_status?.[commandUuid];
+    if (commandStatus && commandStatus !== 'ok') {
+      throw new Error(`Todoist archive command failed: ${JSON.stringify(commandStatus)}`);
+    }
+  }
+
   // ─── Comments ───────────────────────────────────────────────
 
   async addComment(data: {

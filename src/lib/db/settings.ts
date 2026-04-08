@@ -43,7 +43,7 @@ const DEFAULTS: schema.AppSettings = {
   modelConfig: JSON.stringify(DEFAULT_MODEL_CONFIG),
   disabledModels: '[]',
   autoApproveThreshold: 0.8,
-  dupeSimilarityThreshold: 0.65,
+  dupeSimilarityThreshold: 0.85,
   monthlyBudget: null,
   updatedAt: null,
 };

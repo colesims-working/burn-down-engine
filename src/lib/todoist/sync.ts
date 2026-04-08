@@ -49,6 +49,7 @@ export async function syncInbox(): Promise<schema.Task[]> {
           .set({
             title: tt.content,
             description: tt.description || null,
+            priority: mapFromTodoistPriority(tt.priority),
             dueDate: tt.due?.date || null,
             labels: JSON.stringify(tt.labels),
             isRecurring: tt.due?.is_recurring || false,
@@ -81,6 +82,7 @@ export async function syncInbox(): Promise<schema.Task[]> {
             set: {
               title: tt.content,
               description: tt.description || null,
+              priority: mapFromTodoistPriority(tt.priority),
               dueDate: tt.due?.date || null,
               labels: JSON.stringify(tt.labels),
               isRecurring: tt.due?.is_recurring || false,
@@ -129,32 +131,41 @@ export async function syncInbox(): Promise<schema.Task[]> {
   }
 
   // Reconcile: local tasks marked 'inbox' that are no longer in Todoist inbox
+  // Do NOT guess what happened — verify remote state for each missing task
   const localInbox = await db.query.tasks.findMany({
     where: eq(schema.tasks.status, 'inbox'),
   });
 
-  // Batch reconciliation — group by target status to minimize updates
-  const toClarified: string[] = [];
-  const toActive: string[] = [];
+  const now = new Date().toISOString();
   for (const local of localInbox) {
     if (!local.todoistId) continue;
     if (todoistInboxIds.has(local.todoistId)) continue;
-    if (local.clarifyConfidence) {
-      toClarified.push(local.id);
-    } else {
-      toActive.push(local.id);
+
+    // Task left the inbox — check what actually happened remotely
+    try {
+      const remoteTask = await todoist.getTask(local.todoistId);
+      // Task still exists in Todoist but moved out of inbox
+      if (remoteTask.is_completed) {
+        await db.update(schema.tasks)
+          .set({ status: 'completed', completedAt: now, updatedAt: now })
+          .where(eq(schema.tasks.id, local.id));
+      } else {
+        // Task is alive in a project — promote based on local enrichment state
+        const newStatus = local.clarifyConfidence ? 'clarified' : 'active';
+        await db.update(schema.tasks)
+          .set({ status: newStatus, updatedAt: now })
+          .where(eq(schema.tasks.id, local.id));
+      }
+    } catch (e: any) {
+      // 404 = task was deleted remotely. Any other error = mark for reconciliation.
+      const isNotFound = e?.message?.includes('404') || e?.status === 404;
+      await db.update(schema.tasks)
+        .set({
+          status: isNotFound ? 'killed' : 'needs_reconcile',
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.id, local.id));
     }
-  }
-  const now = new Date().toISOString();
-  if (toClarified.length > 0) {
-    await db.update(schema.tasks)
-      .set({ status: 'clarified', updatedAt: now })
-      .where(inArray(schema.tasks.id, toClarified));
-  }
-  if (toActive.length > 0) {
-    await db.update(schema.tasks)
-      .set({ status: 'active', updatedAt: now })
-      .where(inArray(schema.tasks.id, toActive));
   }
 
   // Update sync state
@@ -172,12 +183,14 @@ export async function syncProjects(): Promise<schema.Project[]> {
   const todoistProjects = await todoist.getProjects();
   const synced: schema.Project[] = [];
 
-  for (const tp of todoistProjects) {
-    if (tp.inbox_project) continue; // Skip inbox pseudo-project
+  // Pre-fetch all local projects into a Map (eliminates N per-row DB queries)
+  const localProjects = await db.query.projects.findMany();
+  const localByTodoistId = new Map(localProjects.filter(p => p.todoistId).map(p => [p.todoistId!, p]));
 
-    const existing = await db.query.projects.findFirst({
-      where: eq(schema.projects.todoistId, tp.id),
-    });
+  for (const tp of todoistProjects) {
+    if (tp.inbox_project) continue;
+
+    const existing = localByTodoistId.get(tp.id) || null;
 
     if (existing) {
       const updated = await db.update(schema.projects)
@@ -204,6 +217,17 @@ export async function syncProjects(): Promise<schema.Project[]> {
     }
   }
 
+  // Reconcile: archive local projects whose todoistId no longer exists in Todoist
+  const todoistProjectIds = new Set(todoistProjects.map(tp => tp.id));
+  const activeLocalProjects = localProjects.filter(p => p.todoistId && p.status !== 'archived');
+  for (const lp of activeLocalProjects) {
+    if (lp.todoistId && !todoistProjectIds.has(lp.todoistId)) {
+      await db.update(schema.projects)
+        .set({ status: 'archived', updatedAt: new Date().toISOString() })
+        .where(eq(schema.projects.id, lp.id));
+    }
+  }
+
   return synced;
 }
 
@@ -213,25 +237,27 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
   const inboxId = projects.find(p => p.inbox_project)?.id;
   const synced: schema.Task[] = [];
 
+  // Pre-fetch all local data into Maps (eliminates 2N per-row DB queries)
+  const localTasks = await db.query.tasks.findMany();
+  const localTasksByTodoistId = new Map(localTasks.filter(t => t.todoistId).map(t => [t.todoistId!, t]));
+  const localProjects = await db.query.projects.findMany();
+  const localProjectsByTodoistId = new Map(localProjects.filter(p => p.todoistId).map(p => [p.todoistId!, p]));
+
   for (const tt of allTasks) {
     const isInbox = tt.project_id === inboxId;
-    const existing = await db.query.tasks.findFirst({
-      where: eq(schema.tasks.todoistId, tt.id),
-    });
+    const existing = localTasksByTodoistId.get(tt.id) || null;
 
-    // Find local project
+    // Find local project from pre-fetched Map
     let localProjectId: string | null = null;
     if (!isInbox) {
-      const localProject = await db.query.projects.findFirst({
-        where: eq(schema.projects.todoistId, tt.project_id),
-      });
-      localProjectId = localProject?.id || null;
+      localProjectId = localProjectsByTodoistId.get(tt.project_id)?.id || null;
     }
 
     if (existing) {
       // Only update fields that actually changed from Todoist
       const newTitle = tt.content;
       const newDescription = tt.description || null;
+      const newPriority = mapFromTodoistPriority(tt.priority);
       const newProjectId = localProjectId ?? existing.projectId; // preserve local assignments
       const newDueDate = tt.due?.date || null;
       const newLabels = JSON.stringify(tt.labels);
@@ -241,21 +267,27 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
       // Only bump updatedAt if something actually changed
       const changed = newTitle !== existing.title
         || newDescription !== existing.description
+        || newPriority !== existing.priority
         || newProjectId !== existing.projectId
         || newDueDate !== existing.dueDate
         || newLabels !== existing.labels;
+
+      // If task moved back to Todoist inbox, reset local status to inbox
+      const movedToInbox = isInbox && existing.status !== 'inbox' && existing.status !== 'completed' && existing.status !== 'killed';
 
       const updated = await db.update(schema.tasks)
         .set({
           title: newTitle,
           description: newDescription,
+          priority: newPriority,
           projectId: newProjectId,
           dueDate: newDueDate,
           labels: newLabels,
           isRecurring: newIsRecurring,
           recurrenceRule: newRecurrenceRule,
           todoistSyncedAt: new Date().toISOString(),
-          ...(changed ? { updatedAt: new Date().toISOString() } : {}),
+          ...(movedToInbox ? { status: 'inbox' as const, projectId: null } : {}),
+          ...(changed || movedToInbox ? { updatedAt: new Date().toISOString() } : {}),
         })
         .where(eq(schema.tasks.id, existing.id))
         .returning();
@@ -281,21 +313,39 @@ export async function syncAllTasks(): Promise<schema.Task[]> {
     }
   }
 
-  // Reconcile: local tasks with todoistId that no longer exist in Todoist
+  // Reconcile: local tasks with todoistId that no longer appear in Todoist's open list.
+  // Do NOT assume completed — verify each missing task's real state.
   const todoistIds = new Set(allTasks.map(tt => tt.id));
   const localWithTodoist = await db.query.tasks.findMany({
     where: and(
       sql`${schema.tasks.todoistId} IS NOT NULL`,
       ne(schema.tasks.status, 'completed'),
       ne(schema.tasks.status, 'killed'),
+      ne(schema.tasks.status, 'needs_reconcile'),
     ),
   });
   const now = new Date().toISOString();
   for (const local of localWithTodoist) {
     if (!local.todoistId) continue;
-    if (!todoistIds.has(local.todoistId)) {
+    if (todoistIds.has(local.todoistId)) continue;
+
+    // Task missing from open list — determine real state
+    try {
+      const remoteTask = await todoist.getTask(local.todoistId);
+      if (remoteTask.is_completed) {
+        await db.update(schema.tasks)
+          .set({ status: 'completed', completedAt: now, updatedAt: now })
+          .where(eq(schema.tasks.id, local.id));
+      }
+      // else: task is open but filtered out (archived project, etc.) — leave as-is
+    } catch (e: any) {
+      // 404 = deleted remotely. Other errors = flag for reconciliation.
+      const isNotFound = e?.message?.includes('404') || e?.status === 404;
       await db.update(schema.tasks)
-        .set({ status: 'completed', completedAt: now, updatedAt: now })
+        .set({
+          status: isNotFound ? 'killed' : 'needs_reconcile',
+          updatedAt: now,
+        })
         .where(eq(schema.tasks.id, local.id));
     }
   }
@@ -355,8 +405,9 @@ export async function pushTaskToTodoist(localTask: schema.Task): Promise<boolean
     await todoist.moveTask(localTask.todoistId, { project_id: todoistProjectId });
   }
 
-  // Add context as comment if present
-  if (localTask.contextNotes) {
+  // Add context comment only on first push (when status is transitioning from inbox)
+  // Prevents duplicate comments on subsequent syncs
+  if (localTask.contextNotes && localTask.status === 'inbox') {
     await todoist.addComment({
       task_id: localTask.todoistId,
       content: `🔥 **Burn-Down Engine Context**\n\n${localTask.contextNotes}`,
@@ -375,10 +426,11 @@ export async function pushSubtasksToTodoist(
   subtasks: schema.Task[],
   todoistProjectId?: string,
 ): Promise<number> {
-  let created = 0;
-  for (const sub of subtasks) {
-    if (sub.todoistId) continue; // Already in Todoist
+  const pending = subtasks.filter(sub => !sub.todoistId);
+  if (pending.length === 0) return 0;
 
+  // Parallelize subtask creation (was serial — N subtasks = 2N sequential ops)
+  const results = await Promise.allSettled(pending.map(async (sub) => {
     const todoistSub = await todoist.createTask({
       content: sub.title,
       description: sub.nextAction || undefined,
@@ -388,14 +440,12 @@ export async function pushSubtasksToTodoist(
       project_id: todoistProjectId,
     });
 
-    // Store the Todoist ID back on the local subtask
     await db.update(schema.tasks)
       .set({ todoistId: todoistSub.id, todoistSyncedAt: new Date().toISOString() })
       .where(eq(schema.tasks.id, sub.id));
+  }));
 
-    created++;
-  }
-  return created;
+  return results.filter(r => r.status === 'fulfilled').length;
 }
 
 export async function completeTaskInTodoist(localTask: schema.Task): Promise<void> {
@@ -462,6 +512,27 @@ export async function addTodoistComment(todoistTaskId: string, content: string):
  * Recalculates openActionCount and lastActivityAt for all projects
  * based on actual task data. Fixes the "0 tasks / Stale" display issue.
  */
+/**
+ * Incrementally adjust project counts when a task moves between projects.
+ * Much cheaper than a full refreshProjectCounts() scan.
+ */
+export async function adjustProjectCounts(
+  oldProjectId: string | null,
+  newProjectId: string | null,
+): Promise<void> {
+  const now = new Date().toISOString();
+  if (oldProjectId) {
+    await db.update(schema.projects)
+      .set({ openActionCount: sql`MAX(0, ${schema.projects.openActionCount} - 1)`, lastActivityAt: now })
+      .where(eq(schema.projects.id, oldProjectId));
+  }
+  if (newProjectId) {
+    await db.update(schema.projects)
+      .set({ openActionCount: sql`${schema.projects.openActionCount} + 1`, lastActivityAt: now })
+      .where(eq(schema.projects.id, newProjectId));
+  }
+}
+
 export async function refreshProjectCounts(): Promise<void> {
   const allProjects = await db.query.projects.findMany();
 
