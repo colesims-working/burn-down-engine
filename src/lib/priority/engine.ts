@@ -244,6 +244,8 @@ export async function buildEngageListFast(): Promise<EngageData> {
       return (a.timeEstimateMin || 30) - (b.timeEstimateMin || 30);
     });
 
+  const rankStale = _lastRankTime === 0 || (Date.now() - _lastRankTime) > RANK_STALE_MS;
+
   return {
     fires,
     mustDo: deterministicTierSort(p1),

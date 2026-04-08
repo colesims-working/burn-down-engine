@@ -23,6 +23,7 @@ interface TodoistTask {
   } | null;
   labels: string[];
   checked: boolean;
+  is_completed: boolean;
   added_at: string;
 }
 

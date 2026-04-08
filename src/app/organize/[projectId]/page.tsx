@@ -240,7 +240,7 @@ export default function ProjectExecutionPage() {
 
               {/* Metadata */}
               <div className="hidden sm:flex items-center gap-2 shrink-0">
-                {task.energyLevel && <EnergyBadge energy={task.energyLevel} />}
+                {task.energyLevel && <EnergyBadge level={task.energyLevel} />}
                 {task.timeEstimateMin && <TimeEstimate minutes={task.timeEstimateMin} />}
               </div>
 

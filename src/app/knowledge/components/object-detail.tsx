@@ -211,7 +211,7 @@ export function ObjectDetail({ objectId, onBack, onRefresh }: ObjectDetailProps)
               return (
                 <div key={src.id} className="text-sm">
                   <span className="font-medium">{src.name}</span>
-                  {srcProps.value && <span className="text-xs text-muted-foreground ml-2">— {srcProps.value}</span>}
+                  {srcProps.value ? <span className="text-xs text-muted-foreground ml-2">— {String(srcProps.value)}</span> : null}
                 </div>
               );
             })}
