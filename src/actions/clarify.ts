@@ -62,6 +62,7 @@ interface ClarifyResult {
   dueDate: string | null;
   timeEstimateMin: number;
   energyLevel: 'high' | 'medium' | 'low';
+  urgencyClass: 'deadline' | 'momentum' | 'blocking' | 'routine' | 'flexible';
   contextNotes: string;
   definitionOfDone: string;
   nonGoals: string;
